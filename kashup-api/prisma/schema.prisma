@@ -1,0 +1,807 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String                  @id @default(cuid())
+  email             String                  @unique
+  hashedPassword    String
+  firstName         String
+  lastName          String
+  phone             String?
+  role              String                  @default("user")
+  territory         String?                 @default("Martinique")
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  bankAccessLogs    BankAccessLog[]
+  bankConsents      BankConsent[]
+  challengeProgress ChallengeProgress[]
+  donations         DonationImpact[]
+  favorites         FavoritePartner[]
+  giftCardPurchases GiftCardPurchase[]      @relation("GiftCardPurchaser")
+  lotteryEntries    LotteryEntry[]
+  notifications     Notification[]
+  pointsHistory     Points[]
+  powensConnections PowensConnection[]
+  powensLinkTokens  PowensLinkToken[]
+  referral          Referral?
+  rewardHistory     RewardHistory[]
+  transactions      Transaction[]
+  badges            UserBadge[]
+  bankConnections   UserBankConnection[]
+  boosts            UserBoost[]
+  budgetSnapshots   UserBudgetSnapshot[]
+  consent           UserConsent?
+  paymentMethods    UserPaymentMethod[]
+  securityEvents    UserSecurityEvent[]
+  wallet            Wallet?
+  walletSnapshots   WalletMonthlySnapshot[]
+  coffreFortMovements   CoffreFortMovement[]
+  coffreFortWithdrawals CoffreFortWithdrawal[]
+  coffreFortPoints      CoffreFortPointsEntry[]
+}
+
+model PartnerCategory {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  boosts        Boost[]
+  cashbackRates CashbackRate[]
+  partners      Partner[]
+}
+
+model Partner {
+  id                String            @id @default(cuid())
+  name              String
+  slug              String            @unique
+  logoUrl           String?
+  shortDescription  String?
+  description       String?
+  siret             String?
+  phone             String?
+  openingHours      String?   // Horaires d'ouverture/fermeture (ex: "Lun-Ven 9h-18h" ou texte libre)
+  openingDays       String?  // Jours d'ouverture (JSON array: ["monday","tuesday",...])
+  address           String?   // Adresse complète du partenaire
+  websiteUrl        String?
+  facebookUrl       String?
+  instagramUrl      String?
+  tauxCashbackBase  Float
+  discoveryCashbackRate Float? // Taux de cashback de bienvenue
+  permanentCashbackRate Float? // Taux de cashback permanent
+  discoveryCashbackKashupShare Float? // Part du taux de cashback de bienvenue pour KashUP (en %)
+  discoveryCashbackUserShare Float? // Part du taux de cashback de bienvenue pour l'utilisateur (en %)
+  permanentCashbackKashupShare Float? // Part du taux de cashback permanent pour KashUP (en %)
+  permanentCashbackUserShare Float? // Part du taux de cashback permanent pour l'utilisateur (en %)
+  pointsPerTransaction Int? // Nombre de points par transaction
+  territories       String?
+  latitude          Float?
+  longitude         Float?
+  boostable         Boolean           @default(true)
+  categoryId        String
+  status            String?           @default("active") // Statut du partenaire (active, inactive, pending, etc.)
+  additionalInfo    String? // Informations complémentaires (JSON ou texte)
+  affiliations      String? // Affiliations (JSON array)
+  menuImages        String?
+  photos            String?
+  marketingPrograms String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  boosts            Boost[]
+  boxUpPartners     BoxUpPartner[]
+  cashbackRates     CashbackRate[]
+  favorites         FavoritePartner[]
+  giftBoxItems         GiftBoxItem[]
+  giftCards            GiftCard[]
+  carteUpPredefinies   CarteUpPredefinie[]
+  category             PartnerCategory   @relation(fields: [categoryId], references: [id])
+  documents         PartnerDocument[]
+  offers            PartnerOffer[]
+  transactions      Transaction[]
+
+  @@index([categoryId])
+}
+
+model PartnerOffer {
+  id           String    @id @default(cuid())
+  partnerId    String?
+  title        String
+  subtitle     String?
+  description  String?
+  imageUrl     String?
+  priority     Int       @default(1)
+  rewardType   String?
+  startsAt     DateTime
+  endsAt       DateTime
+  active       Boolean   @default(true)
+  price        Float?
+  cashbackRate Float?
+  stock        Int?
+  stockUsed    Int       @default(0)
+  status       String    @default("scheduled")
+  conditions   String?
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  partner      Partner?  @relation(fields: [partnerId], references: [id])
+
+  @@index([updatedAt])
+}
+
+// Bannières publicitaires page d'accueil (images ou vidéos, défilement horizontal)
+model HomeBanner {
+  id        String   @id @default(cuid())
+  title     String?  // Libellé optionnel (ex: "Offre du moment")
+  mediaType String   @default("image") // "image" | "video"
+  imageUrl  String?  // URL image (pour image ou miniature vidéo)
+  videoUrl  String?  // URL vidéo (optionnel)
+  linkUrl   String?  // Lien au clic (optionnel)
+  position  Int      @default(0) // Ordre d'affichage
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CashbackRate {
+  id         String           @id @default(cuid())
+  partnerId  String?
+  categoryId String?
+  territory  String
+  rate       Float
+  createdAt  DateTime         @default(now())
+  category   PartnerCategory? @relation(fields: [categoryId], references: [id])
+  partner    Partner?         @relation(fields: [partnerId], references: [id])
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  soldeCashback   Float    @default(0)
+  soldePoints     Int      @default(0)
+  soldeCoffreFort Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+// Règle coffre-fort : blocage 2 mois, X points par € par mois (configurable en back office)
+model CoffreFortConfig {
+  id                    String   @id @default(cuid())
+  lockPeriodMonths      Int      @default(2)
+  pointsPerEuroPerMonth Float    @default(10)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Chaque versement en coffre-fort : montant, date de déblocage
+model CoffreFortMovement {
+  id              String   @id @default(cuid())
+  userId          String
+  amount          Float
+  amountWithdrawn Float   @default(0)
+  lockedAt        DateTime @default(now())
+  unlockAt        DateTime
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([unlockAt])
+}
+
+model CoffreFortWithdrawal {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Float
+  withdrawnAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CoffreFortPointsEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  points    Int
+  earnedAt  DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model WalletMonthlySnapshot {
+  id              String   @id @default(cuid())
+  userId          String
+  month           String
+  objectiveAmount Float    @default(0)
+  injectedAmount  Float    @default(0)
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, month])
+}
+
+model Points {
+  id        String   @id @default(cuid())
+  userId    String
+  delta     Int
+  reason    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  userId          String
+  partnerId       String
+  amount          Float
+  cashbackEarned  Float
+  pointsEarned    Int
+  transactionDate DateTime @default(now())
+  source          String   @default("carte")
+  status          String   @default("confirmed")
+  metadata        String?
+  partner         Partner  @relation(fields: [partnerId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([partnerId])
+}
+
+model Boost {
+  id           String           @id @default(cuid())
+  name         String           @unique
+  description  String
+  multiplier   Float            @default(1.0)
+  target       String           @default("all")
+  categoryId   String?
+  partnerId    String?
+  costInPoints Int
+  startsAt     DateTime
+  endsAt       DateTime
+  active       Boolean          @default(true)
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+  partner      Partner?         @relation(fields: [partnerId], references: [id])
+  category     PartnerCategory? @relation(fields: [categoryId], references: [id])
+  users        UserBoost[]
+
+  @@index([updatedAt])
+}
+
+model UserBoost {
+  id          String   @id @default(cuid())
+  userId      String
+  boostId     String
+  activatedAt DateTime @default(now())
+  expiresAt   DateTime
+  boost       Boost    @relation(fields: [boostId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, boostId])
+}
+
+model Badge {
+  id              String      @id @default(cuid())
+  name            String      @unique
+  description     String
+  level           Int
+  unlockCondition String
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+  users           UserBadge[]
+
+  @@index([updatedAt])
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  obtainedAt DateTime @default(now())
+  badge      Badge    @relation(fields: [badgeId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, badgeId])
+}
+
+model GiftCard {
+  id          String             @id @default(cuid())
+  type        String             @default("bon_achat")
+  name        String
+  description String
+  value       Float
+  partnerId   String?
+  isGiftable  Boolean            @default(true)
+  updatedAt   DateTime           @updatedAt
+  deletedAt   DateTime?
+  partner     Partner?           @relation(fields: [partnerId], references: [id])
+  purchases   GiftCardPurchase[]
+
+  @@index([updatedAt])
+}
+
+model GiftCardPurchase {
+  id               String   @id @default(cuid())
+  giftCardId       String
+  purchaserId      String
+  beneficiaryEmail String
+  message          String?
+  amount           Float
+  code             String   @unique
+  expiresAt        DateTime
+  status           String   @default("actif")
+  createdAt        DateTime @default(now())
+  giftCard         GiftCard @relation(fields: [giftCardId], references: [id])
+  purchaser        User     @relation("GiftCardPurchaser", fields: [purchaserId], references: [id])
+}
+
+model GiftBox {
+  id           String        @id @default(cuid())
+  name         String
+  description  String
+  imageUrl     String?
+  cashbackInfo String?
+  value        Float         @default(0)
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  items        GiftBoxItem[]
+}
+
+model GiftBoxItem {
+  id          String   @id @default(cuid())
+  giftBoxId   String
+  partnerId   String?
+  title       String
+  description String?
+  partner     Partner? @relation(fields: [partnerId], references: [id])
+  giftBox     GiftBox  @relation(fields: [giftBoxId], references: [id])
+}
+
+model GiftCardAmount {
+  id        String   @id @default(cuid())
+  amount    Float    // montant en euros (ex: 5, 10, 20, 50, 100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Carte Sélection UP : config (partenaires éligibles, montant libre) ; l'utilisateur crée sa carte
+model CarteUpLibreConfig {
+  id                   String   @id @default(cuid())
+  nom                  String
+  description          String
+  imageUrl             String?
+  montantsDisponibles  String   @default("[]") // JSON array of numbers, vide = montant libre
+  partenairesEligibles String   // JSON array of partner IDs
+  conditions           String?
+  commentCaMarche      String?
+  status               String   @default("active") // active | inactive
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// Carte UP : créée par l'admin (partenaire, montant, image, validité) ; l'utilisateur ajoute texte + macaron
+model CarteUpPredefinie {
+  id                 String    @id @default(cuid())
+  nom                String
+  partenaireId       String
+  offre              String?
+  montant            Float
+  imageUrl           String?
+  description        String
+  dureeValiditeJours Int?
+  conditions         String?
+  commentCaMarche    String?
+  status             String    @default("active")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  partner            Partner   @relation(fields: [partenaireId], references: [id])
+}
+
+model PredefinedGift {
+  id        String    @id @default(cuid())
+  title     String
+  subtitle  String?
+  imageUrl  String?
+  amount    Float
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([updatedAt])
+}
+
+model FavoritePartner {
+  id        String   @id @default(cuid())
+  userId    String
+  partnerId String
+  createdAt DateTime @default(now())
+  partner   Partner  @relation(fields: [partnerId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, partnerId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  category  String    @default("system")
+  metadata  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([userId, category])
+}
+
+model Referral {
+  id           String           @id @default(cuid())
+  userId       String           @unique
+  code         String           @unique
+  rewardPoints Int              @default(0)
+  createdAt    DateTime         @default(now())
+  user         User             @relation(fields: [userId], references: [id])
+  invites      ReferralInvite[]
+}
+
+model ReferralInvite {
+  id            String    @id @default(cuid())
+  referralId    String
+  inviteeEmail  String
+  status        String    @default("pending")
+  completedAt   DateTime?
+  rewardGranted Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  referral      Referral  @relation(fields: [referralId], references: [id])
+}
+
+model DonationCategory {
+  id           String                @id @default(cuid())
+  name         String                @unique
+  description  String?
+  updatedAt    DateTime              @updatedAt
+  deletedAt    DateTime?
+  associations DonationAssociation[]
+
+  @@index([updatedAt])
+}
+
+model DonationAssociation {
+  id          String                 @id @default(cuid())
+  name        String
+  description String?
+  tonImpact   String?                // Texte "Ton impact" pour le back office
+  logoUrl     String?
+  websiteUrl  String?
+  department  String?
+  categoryId  String
+  status      String                 @default("active") // draft | active
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  deletedAt   DateTime?
+  category    DonationCategory       @relation(fields: [categoryId], references: [id])
+  donations   DonationImpact[]
+  spotlights  SpotlightAssociation[]
+
+  @@index([updatedAt])
+}
+
+model DonationImpact {
+  id            String              @id @default(cuid())
+  associationId String
+  userId        String?
+  amount        Float
+  createdAt     DateTime            @default(now())
+  user          User?               @relation(fields: [userId], references: [id])
+  association   DonationAssociation @relation(fields: [associationId], references: [id])
+}
+
+model SpotlightAssociation {
+  id            String              @id @default(cuid())
+  associationId String
+  spotlightType String              @default("home")
+  startsAt      DateTime
+  endsAt        DateTime
+  active        Boolean             @default(true)
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?
+  association   DonationAssociation @relation(fields: [associationId], references: [id])
+
+  @@index([updatedAt])
+}
+
+model RewardHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String
+  title     String
+  details   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, category])
+}
+
+model Lottery {
+  id          String         @id @default(cuid())
+  title       String
+  description String?
+  imageUrl    String?
+  startAt     DateTime
+  endAt       DateTime
+  ticketCost  Int
+  status      String         @default("upcoming")
+  active      Boolean        @default(true)
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+  entries     LotteryEntry[]
+
+  @@index([updatedAt])
+}
+
+model LotteryEntry {
+  id        String   @id @default(cuid())
+  lotteryId String
+  userId    String
+  tickets   Int      @default(1)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  lottery   Lottery  @relation(fields: [lotteryId], references: [id])
+
+  @@unique([lotteryId, userId])
+}
+
+model Challenge {
+  id           String              @id @default(cuid())
+  title        String
+  description  String?
+  goalType     String
+  goalValue    Int
+  rewardPoints Int                 @default(0)
+  startAt      DateTime
+  endAt        DateTime
+  status       String              @default("upcoming")
+  updatedAt    DateTime            @updatedAt
+  deletedAt    DateTime?
+  progressions ChallengeProgress[]
+
+  @@index([updatedAt])
+}
+
+model ChallengeProgress {
+  id          String    @id @default(cuid())
+  challengeId String
+  userId      String
+  progress    Int       @default(0)
+  completedAt DateTime?
+  user        User      @relation(fields: [userId], references: [id])
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+
+  @@unique([challengeId, userId])
+}
+
+model UserBankConnection {
+  id           String    @id @default(cuid())
+  userId       String
+  provider     String
+  status       String    @default("active")
+  lastSyncAt   DateTime?
+  accountsJson String?
+  user         User      @relation(fields: [userId], references: [id])
+}
+
+model UserBudgetSnapshot {
+  id        String   @id @default(cuid())
+  userId    String
+  month     String
+  income    Float    @default(0)
+  expenses  Float    @default(0)
+  savings   Float    @default(0)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, month])
+}
+
+model UserPaymentMethod {
+  id        String   @id @default(cuid())
+  userId    String
+  provider  String
+  type      String
+  last4     String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model UserSecurityEvent {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+  user        User      @relation(fields: [userId], references: [id])
+}
+
+model PowensLinkToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model PowensConnection {
+  id                 String          @id @default(cuid())
+  userId             String
+  powensUserId       String?
+  powensConnectionId String?
+  accessToken        String
+  status             String          @default("active")
+  lastSyncAt         DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  accessLogs         BankAccessLog[]
+  bankAccounts       BankAccount[]
+  bankConsents       BankConsent[]
+  user               User            @relation(fields: [userId], references: [id])
+
+  @@unique([userId, powensConnectionId])
+  @@index([userId])
+}
+
+model BankAccount {
+  id               String            @id @default(cuid())
+  connectionId     String
+  powensAccountId  String?
+  label            String
+  iban             String?
+  balance          Float             @default(0)
+  currency         String            @default("EUR")
+  type             String?
+  raw              String?
+  lastSyncAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  connection       PowensConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  bankTransactions BankTransaction[]
+
+  @@unique([connectionId, powensAccountId])
+  @@index([connectionId])
+}
+
+model BankTransaction {
+  id                  String      @id @default(cuid())
+  accountId           String
+  powensTransactionId String?
+  date                DateTime
+  amount              Float
+  label               String
+  category            String?
+  raw                 String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  account             BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, powensTransactionId])
+  @@index([accountId])
+  @@index([date])
+}
+
+model AdminReportLog {
+  id        String   @id @default(cuid())
+  type      String
+  payload   String?
+  createdAt DateTime @default(now())
+}
+
+model GiftCardConfig {
+  id                          String   @id @default(cuid())
+  giftCardDescription         String?
+  giftCardImageUrl            String?
+  giftCardVirtualCardImageUrl String?
+  giftCardHowItWorks          String?
+  giftCardConditions          String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
+
+model BoxUpConfig {
+  id              String         @id @default(cuid())
+  boxUpName       String
+  boxUpImageUrl   String?
+  boxUpHowItWorks String?
+  boxUpConditions String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  partners        BoxUpPartner[]
+}
+
+model BoxUpPartner {
+  id            String      @id @default(cuid())
+  boxUpConfigId String
+  partnerId     String
+  partner       Partner     @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  boxUpConfig   BoxUpConfig @relation(fields: [boxUpConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([boxUpConfigId, partnerId])
+}
+
+model PartnerDocument {
+  id        String   @id @default(cuid())
+  partnerId String
+  name      String
+  type      String
+  url       String
+  size      String?
+  createdAt DateTime @default(now())
+  partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+}
+
+model UserConsent {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  privacyPolicy        Boolean   @default(false)
+  privacyPolicyAt      DateTime?
+  privacyPolicyVersion String?
+  marketing            Boolean   @default(false)
+  marketingAt          DateTime?
+  analytics            Boolean   @default(false)
+  analyticsAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model BankConsent {
+  id               String           @id @default(cuid())
+  userId           String
+  connectionId     String
+  consentGiven     Boolean          @default(false)
+  consentGivenAt   DateTime?
+  consentRevoked   Boolean          @default(false)
+  consentRevokedAt DateTime?
+  scope            String
+  expiresAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  connection       PowensConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, connectionId])
+  @@index([userId])
+  @@index([connectionId])
+}
+
+model BankAccessLog {
+  id           String            @id @default(cuid())
+  userId       String
+  connectionId String?
+  action       String
+  ipAddress    String?
+  userAgent    String?
+  success      Boolean
+  errorMessage String?
+  metadata     String?
+  createdAt    DateTime          @default(now())
+  connection   PowensConnection? @relation(fields: [connectionId], references: [id])
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([connectionId])
+  @@index([createdAt])
+  @@index([action])
+}
