@@ -1,0 +1,1474 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { CompositeNavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Video, ResizeMode } from 'expo-av';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, Image, Linking, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { apiOrigin } from '@/src/config/runtime';
+import { useHomeBanners } from '@/src/hooks/useHomeBanners';
+import { usePartners } from '@/src/hooks/usePartners';
+import { useUserProfile } from '@/src/hooks/useUserProfile';
+import { useWallet } from '@/src/hooks/useWallet';
+import { useWebhookEvents } from '@/src/hooks/useWebhookEvents';
+import { adaptPartnerFromApi, PartnerViewModel } from '@/src/utils/partnerAdapter';
+import { colors, radius, spacing } from '../constants/theme';
+import { useNotifications } from '../context/NotificationsContext';
+import { HomeStackParamList } from '../navigation/HomeStack';
+import { MainStackParamList } from '../navigation/MainStack';
+
+// Mapping des partenaires vers images de fond et logos
+const getPartnerImage = (partnerName: string, categoryId?: string): string => {
+  const name = partnerName.toLowerCase();
+  
+  // Partenaires spécifiques
+  if (name.includes('hitbox')) {
+    return 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&q=80'; // Bar
+  }
+  if (name.includes('palmistes') || name.includes('hotel')) {
+    return 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80'; // Hotel
+  }
+  if (name.includes('securidom') || name.includes('sécurité')) {
+    return 'https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?w=800&q=80'; // Alarme et vidéosurveillance
+  }
+  if (name.includes('carrefour')) {
+    return 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=800&q=80'; // Supermarché
+  }
+  
+  // Par catégorie
+  if (categoryId?.includes('restaurant') || categoryId?.includes('bar')) {
+    return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80'; // Restaurant
+  }
+  if (categoryId?.includes('hotel') || categoryId?.includes('hospitality')) {
+    return 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80'; // Hotel
+  }
+  if (categoryId?.includes('supermarket') || categoryId?.includes('hypermarché')) {
+    return 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=800&q=80'; // Supermarché
+  }
+  if (categoryId?.includes('service') || categoryId?.includes('sécurité')) {
+    return 'https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?w=800&q=80'; // Alarme et vidéosurveillance
+  }
+  
+  // Par défaut
+  return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80'; // Commerce générique
+};
+
+// Mapping des logos depuis internet
+// Priorité: 1) logoUrl de l'API, 2) getPartnerLogo, 3) null
+const getPartnerLogo = (partnerName: string, apiLogoUrl?: string | null): string | null => {
+  // Priorité 1: Utiliser le logo de l'API s'il existe
+  if (apiLogoUrl && apiLogoUrl.trim() !== '') {
+    return apiLogoUrl;
+  }
+  
+  // Priorité 2: Logo depuis mapping
+  const name = partnerName.toLowerCase();
+  
+  if (name.includes('carrefour')) {
+    return 'https://logos-world.net/wp-content/uploads/2020/11/Carrefour-Logo.png';
+  }
+  if (name.includes('hitbox')) {
+    // Logo générique pour bar - à remplacer plus tard
+    return null;
+  }
+  if (name.includes('palmistes') || name.includes('hotel')) {
+    // Logo générique pour hotel - à remplacer plus tard
+    return null;
+  }
+  if (name.includes('securidom')) {
+    // Logo générique pour sécurité - à remplacer plus tard
+    return null;
+  }
+  
+  return null;
+};
+
+type HomeNavProp = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, 'HomeLanding'>,
+  NativeStackNavigationProp<MainStackParamList>
+>;
+
+const HEADER_CONTENT_HEIGHT = 44;
+
+export default function HomeScreen() {
+  const navigation = useNavigation<HomeNavProp>();
+  const insets = useSafeAreaInsets();
+  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const { notifications } = useNotifications();
+  const unreadCount = notifications.filter((notif) => !notif.read).length;
+  const hasActiveNotifications = unreadCount > 0;
+
+  const {
+    data: profile,
+    loading: profileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useUserProfile();
+  const isAuthenticated = profile !== null;
+
+  const {
+    data: walletData,
+    loading: walletLoading,
+    error: walletError,
+    refetch: refetchWallet,
+  } = useWallet();
+
+  const {
+    data: partnersData,
+    loading: partnersLoading,
+    error: partnersError,
+    refetch: refetchPartners,
+  } = usePartners();
+  const { data: homeBanners, loading: bannersLoading, refetch: refetchBanners } = useHomeBanners();
+  const [adIndex, setAdIndex] = useState(0);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const adIndexRef = useRef(0);
+  const adTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    adIndexRef.current = adIndex;
+  }, [adIndex]);
+
+  const goToNextBanner = useCallback(() => {
+    if (homeBanners.length <= 1) return;
+    const next = (adIndexRef.current + 1) % homeBanners.length;
+    scrollViewRef.current?.scrollTo({ x: next * AD_SNAP_INTERVAL, animated: true });
+  }, [homeBanners.length]);
+
+  useEffect(() => {
+    if (adTimerRef.current) {
+      clearTimeout(adTimerRef.current);
+      adTimerRef.current = null;
+    }
+    if (homeBanners.length === 0) return;
+    const current = homeBanners[adIndex];
+    if (current?.mediaType === 'image') {
+      adTimerRef.current = setTimeout(goToNextBanner, 5000);
+    }
+    return () => {
+      if (adTimerRef.current) clearTimeout(adTimerRef.current);
+    };
+  }, [adIndex, homeBanners, goToNextBanner]);
+
+  useWebhookEvents({
+    onPartnersChanged: refetchPartners,
+    onOffersChanged: refetchPartners,
+  });
+
+  const isFirstFocusPartners = React.useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocusPartners.current) {
+        isFirstFocusPartners.current = false;
+        return;
+      }
+      refetchPartners();
+    }, [refetchPartners])
+  );
+
+  const partners = useMemo<PartnerViewModel[]>(
+    () => partnersData.partners.map(adaptPartnerFromApi),
+    [partnersData.partners]
+  );
+
+  // Vérifier si des partenaires ont des coordonnées géographiques
+  const hasPartnersWithLocation = useMemo(
+    () => partners.some((p) => p.latitude != null && p.longitude != null),
+    [partners]
+  );
+
+  // Les pépites KashUP - partenaires avec pepites ou isRecommended
+  const pepites = useMemo(
+    () =>
+      partners
+        .filter(
+          (partner) =>
+            partner.marketingPrograms?.includes('pepites') === true || partner.isRecommended === true
+        )
+        .slice(0, 5),
+    [partners]
+  );
+
+  // Les partenaires boostés - partenaires avec boosted ou isBoosted (boostable en back office)
+  const boosted = useMemo(
+    () =>
+      partners
+        .filter(
+          (partner) =>
+            partner.marketingPrograms?.includes('boosted') === true || partner.isBoosted === true
+        )
+        .slice(0, 8),
+    [partners]
+  );
+
+  // Les plus gros cashback - triés par tauxCashbackBase réel de l'API
+  const topCashback = useMemo(
+    () =>
+      partners
+        .filter((partner) => partner.cashbackRate != null && partner.cashbackRate > 0)
+        .sort((a, b) => b.cashbackRate - a.cashbackRate)
+        .slice(0, 8),
+    [partners]
+  );
+
+  // Les partenaires populaires - most-searched ou isPopular (même critère que la pastille "Populaire")
+  const popularPartners = useMemo(
+    () =>
+      partners
+        .filter(
+          (partner) =>
+            partner.marketingPrograms?.includes('most-searched') === true || partner.isPopular === true
+        )
+        .slice(0, 12),
+    [partners]
+  );
+
+  // Grille 5 encarts par ligne : largeur calculée pour garantir exactement 5 colonnes
+  const { width: screenWidth } = useWindowDimensions();
+  const SECTION_PADDING = spacing.lg * 2;
+  const POPULAR_GRID_GAP = spacing.md;
+  const POPULAR_COLS = 5;
+  const popularItemSize = (screenWidth - SECTION_PADDING - (POPULAR_COLS - 1) * POPULAR_GRID_GAP) / POPULAR_COLS;
+
+  const refreshing = profileLoading || walletLoading || partnersLoading || bannersLoading;
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refetchProfile(), refetchWallet(), refetchPartners(), refetchBanners()]);
+  }, [refetchProfile, refetchWallet, refetchPartners, refetchBanners]);
+
+  const handlePartnerPress = (partnerId: string) => {
+    navigation.navigate('PartnerDetail', { partnerId });
+  };
+
+  const handleDiscoverPress = () => {
+    const parent = navigation.getParent();
+    (parent as any)?.navigate('Partenaires', { openNearby: true, nearbyRadiusKm: 10 });
+  };
+
+  const handleProfilePress = () => {
+    navigation.navigate('Profile' as never);
+  };
+
+  const handleDonPress = () => {
+    navigation.navigate('Donations' as never);
+  };
+
+  const handleGiftCardsPress = () => {
+    // Navigation vers l'onglet "Bons d'achat" dans les BottomTabs
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as any).navigate('Tabs', { screen: 'Bons d\'achat' });
+    }
+  };
+
+  const handleLotteryPress = () => {
+    // Navigation vers l'onglet "Rewards" avec initialTab: 'lotteries'
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as any).navigate('Tabs', { screen: 'Rewards', params: { initialTab: 'lotteries' } });
+    }
+  };
+
+  // Formatage des montants
+  const formatCashback = (amount: number | null | undefined): string => {
+    if (amount == null) return '';
+    return `${amount.toFixed(2)} €`.replace('.', ',');
+  };
+
+  const formatPoints = (points: number | null | undefined): string => {
+    if (points == null) return '';
+    return points.toLocaleString('fr-FR');
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+      <LinearGradient
+        colors={[colors.slateBackgroundLight, colors.slateBackground]}
+        style={StyleSheet.absoluteFill}
+      />
+      {/* HEADER FIXE */}
+      <View style={[styles.header, { paddingTop: Math.max(0, insets.top - 36) }]}>
+        <View style={styles.headerTitleBlock}>
+          <Image
+            source={require('../assets/images/logo-kashup-up.png')}
+            style={styles.appTitleLogo}
+            resizeMode="contain"
+          />
+          <Text style={styles.appTitle}>KashUP</Text>
+        </View>
+        <View style={styles.headerIcons}>
+          {/* Recherche partenaire */}
+          <TouchableOpacity
+            style={styles.headerIcon}
+            activeOpacity={0.7}
+            onPress={() => setSearchModalVisible(true)}>
+            <Ionicons name="search-outline" size={24} color={colors.textMain} />
+          </TouchableOpacity>
+          {/* Notifications - TOUJOURS visible, badge uniquement si actives */}
+          <TouchableOpacity
+            style={styles.headerIcon}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('Notifications')}>
+            <Ionicons name="notifications-outline" size={24} color={colors.textMain} />
+            {hasActiveNotifications && (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {/* Profil utilisateur - TOUJOURS visible */}
+          <TouchableOpacity style={styles.headerIcon} activeOpacity={0.7} onPress={handleProfilePress}>
+            <Ionicons name="person-circle-outline" size={24} color={colors.textMain} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(0, insets.top - 36) + HEADER_CONTENT_HEIGHT + spacing.lg }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
+        {/* SECTION RÉSUMÉ UTILISATEUR - style Uber Eats (vert) */}
+        <View style={styles.userSummaryContainer}>
+          <LinearGradient colors={['#05A357', '#048A48']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.userSummaryCard}>
+            <View style={styles.userSummaryTextBlock}>
+              <Text style={styles.userSummaryLabel}>Mon KashUP</Text>
+              <Text style={styles.userSummaryAmount}>
+                {walletData.wallet?.soldeCashback != null
+                  ? formatCashback(walletData.wallet.soldeCashback)
+                  : '0,00 €'}
+              </Text>
+              <Text style={styles.userSummarySubtitle}>C'est le montant disponible grâce à vos achats locaux.</Text>
+              <View style={styles.userSummaryPointsRow}>
+                <View style={styles.userSummaryPointsDot} />
+                <Text style={styles.userSummaryPointsLabel}>Points KashUP</Text>
+                <Text style={styles.userSummaryPointsValue}>
+                  {walletData.wallet?.soldePoints != null
+                    ? formatPoints(walletData.wallet.soldePoints)
+                    : '0'}
+                </Text>
+              </View>
+              {walletLoading && (
+                <View style={styles.userSummaryLoaderRow}>
+                  <ActivityIndicator size="small" color={colors.white} />
+                  <Text style={styles.userSummaryLoaderText}>Mise à jour des données…</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.userSummaryTabs}>
+              <TouchableOpacity
+                style={styles.userSummaryTab}
+                onPress={handleDonPress}
+                activeOpacity={0.85}>
+                <Ionicons name="heart-outline" size={16} color="rgba(255,255,255,0.95)" />
+                <Text style={styles.userSummaryTabText}>Don</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.userSummaryTab}
+                onPress={handleGiftCardsPress}
+                activeOpacity={0.85}>
+                <Ionicons name="gift-outline" size={16} color="rgba(255,255,255,0.95)" />
+                <Text style={styles.userSummaryTabText}>Cartes UP</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.userSummaryTab}
+                onPress={handleLotteryPress}
+                activeOpacity={0.85}>
+                <Ionicons name="trophy-outline" size={16} color="rgba(255,255,255,0.95)" />
+                <Text style={styles.userSummaryTabText}>Loteries</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+
+        {/* Espace publicité — défilement horizontal images/vidéos, snap une image */}
+        {homeBanners.length > 0 && (
+          <View style={styles.adsSection}>
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              snapToInterval={AD_SNAP_INTERVAL}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              showsHorizontalScrollIndicator={false}
+              onScroll={(e) => {
+                const x = e.nativeEvent.contentOffset.x;
+                const index = Math.round(x / AD_SNAP_INTERVAL);
+                if (index >= 0 && index < homeBanners.length && index !== adIndex) setAdIndex(index);
+              }}
+              scrollEventThrottle={16}
+              contentContainerStyle={styles.adsScrollContent}>
+              {homeBanners.map((banner, index) => {
+                const base = (apiOrigin || '').replace(/\/+$/, '');
+                const toMediaUrl = (s: string | null | undefined): string | null => {
+                  if (!s) return null;
+                  if (s.startsWith('http')) {
+                    try {
+                      const pathname = new URL(s).pathname;
+                      return pathname ? `${base}${pathname}` : s;
+                    } catch {
+                      return s;
+                    }
+                  }
+                  return `${base}${s.startsWith('/') ? s : `/${s}`}`;
+                };
+                const imageUri = banner.imageUrl ? toMediaUrl(banner.imageUrl) : null;
+                const videoUri = banner.videoUrl ? toMediaUrl(banner.videoUrl) : null;
+                const onPress = () => {
+                  if (banner.linkUrl) Linking.openURL(banner.linkUrl);
+                };
+                const isVideoActive = index === adIndex && banner.mediaType === 'video' && videoUri;
+                return (
+                  <TouchableOpacity
+                    key={banner.id}
+                    style={styles.adCard}
+                    onPress={onPress}
+                    activeOpacity={0.9}>
+                    {banner.mediaType === 'video' && videoUri ? (
+                      <View style={styles.adMediaContainer}>
+                        {isVideoActive ? (
+                          <Video
+                            source={{ uri: videoUri }}
+                            style={styles.adImage}
+                            useNativeControls={false}
+                            shouldPlay
+                            isLooping={false}
+                            resizeMode={ResizeMode.CONTAIN}
+                            onPlaybackStatusUpdate={(status) => {
+                              if (status.isLoaded && status.didJustFinishAndNotLoop) {
+                                goToNextBanner();
+                              }
+                            }}
+                          />
+                        ) : (
+                          <View style={styles.adPlaceholder}>
+                            <Ionicons name="videocam-outline" size={40} color={colors.textSecondary} />
+                          </View>
+                        )}
+                      </View>
+                    ) : imageUri ? (
+                      <Image
+                        source={{ uri: imageUri }}
+                        style={styles.adImage}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.adPlaceholder}>
+                        <Ionicons name="image-outline" size={40} color={colors.textSecondary} />
+                      </View>
+                    )}
+                    {banner.title ? (
+                      <Text style={styles.adTitle} numberOfLines={1}>{banner.title}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {/* Points de pagination */}
+            <View style={styles.adsPagination}>
+              {homeBanners.map((_, i) => (
+                <View
+                  key={i}
+                  style={[styles.adsDot, i === adIndex && styles.adsDotActive]}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Encart "Trouvez les partenaires autour de vous" */}
+        {hasPartnersWithLocation && partners.length > 0 && (
+          <View style={styles.partnersNearbyContainer}>
+            <TouchableOpacity style={styles.partnersNearbyCard} activeOpacity={0.85} onPress={handleDiscoverPress}>
+              <View style={styles.partnersNearbyContent}>
+                <Ionicons name="location" size={24} color={colors.primary} />
+                <View style={styles.partnersNearbyText}>
+                  <Text style={styles.partnersNearbyTitle}>Trouvez les partenaires autour de vous</Text>
+                  <Text style={styles.partnersNearbySubtitle}>Découvrez les bons plans près de chez vous</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Gestion des erreurs */}
+        {partnersError && (
+          <TouchableOpacity style={styles.errorBanner} onPress={refetchPartners} activeOpacity={0.85}>
+            <Text style={styles.errorBannerText}>{partnersError}</Text>
+            <Text style={styles.errorBannerCta}>Réessayer</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* SECTION 1 - LES PÉPITES KASHUP - si données présentes */}
+        {pepites.length > 0 && (
+          <Section
+            title="Les pépites KashUP"
+            subtitle="Nos meilleures adresses, sélectionnées avec soin"
+            loading={partnersLoading}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.premiumCarousel}
+              decelerationRate="fast"
+              snapToInterval={PEPITE_CARD_WIDTH + spacing.lg}
+              snapToAlignment="start"
+              >
+              {pepites.map((partner) => (
+                <PepiteCard key={partner.id} partner={partner} onPress={() => handlePartnerPress(partner.id)} />
+              ))}
+            </ScrollView>
+          </Section>
+        )}
+
+        {/* SECTION 2 - LES PARTENAIRES BOOSTÉS - si données présentes */}
+        {boosted.length > 0 && (
+          <Section
+            title="Les partenaires boostés"
+            subtitle="Offres spéciales avec cashback augmenté"
+            loading={partnersLoading}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.premiumCarousel}
+              decelerationRate="fast"
+              snapToInterval={PEPITE_CARD_WIDTH + spacing.lg}
+              snapToAlignment="start"
+              >
+              {boosted.map((partner) => (
+                <BoostedCard key={partner.id} partner={partner} onPress={() => handlePartnerPress(partner.id)} />
+              ))}
+            </ScrollView>
+          </Section>
+        )}
+
+        {/* SECTION 3 - LES PARTENAIRES POPULAIRES - grille 5 par ligne */}
+        {popularPartners.length > 0 && (
+          <Section
+            title="Les partenaires populaires"
+            subtitle="Les plus recherchés par les utilisateurs KashUP"
+            loading={partnersLoading}>
+            <View style={styles.popularGridContainer}>
+              {popularPartners.map((partner) => (
+                <View key={partner.id} style={[styles.popularGridItem, { width: popularItemSize }]}>
+                  <MostSearchedCard
+                    partner={partner}
+                    onPress={() => handlePartnerPress(partner.id)}
+                    cardStyle={styles.logoOnlyCardInGrid}
+                  />
+                </View>
+              ))}
+            </View>
+          </Section>
+        )}
+
+        {/* SECTION 4 - LES PLUS GROS CASHBACK - UNIQUEMENT si données présentes */}
+        {topCashback.length > 0 && (
+          <Section
+            title="Les plus gros cash back"
+            subtitle="Faites le maximum d'économies dès aujourd'hui"
+            loading={partnersLoading}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cashbackCarousel}
+              decelerationRate="fast">
+              {topCashback.map((partner) => (
+                <CashbackCard key={partner.id} partner={partner} onPress={() => handlePartnerPress(partner.id)} />
+              ))}
+            </ScrollView>
+          </Section>
+        )}
+
+        {/* CTA - Voir tous les partenaires */}
+        <View style={styles.ctaPartnersWrap}>
+          <TouchableOpacity
+            style={styles.ctaPartnersButton}
+            activeOpacity={0.85}
+            onPress={() => {
+              const parent = navigation.getParent();
+              (parent as any)?.navigate('Partenaires');
+            }}>
+            <Text style={styles.ctaPartnersText}>Voir tous les partenaires</Text>
+            <Ionicons name="arrow-forward" size={20} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
+
+      {/* Modal recherche partenaire */}
+      <Modal
+        visible={searchModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSearchModalVisible(false)}>
+        <TouchableOpacity
+          style={styles.searchModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSearchModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={styles.searchModalContent}>
+            <Text style={styles.searchModalTitle}>Rechercher un partenaire</Text>
+            <TextInput
+              style={styles.searchModalInput}
+              placeholder="Nom du partenaire..."
+              placeholderTextColor={colors.textSecondary}
+              value={homeSearchQuery}
+              onChangeText={setHomeSearchQuery}
+              autoFocus
+              returnKeyType="search"
+              onSubmitEditing={() => {
+                setSearchModalVisible(false);
+                const parent = navigation.getParent();
+                (parent as any)?.navigate('Partenaires', { initialSearch: homeSearchQuery.trim() });
+                setHomeSearchQuery('');
+              }}
+            />
+            <View style={styles.searchModalButtons}>
+              <TouchableOpacity style={styles.searchModalButtonCancel} onPress={() => setSearchModalVisible(false)}>
+                <Text style={styles.searchModalButtonCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.searchModalButtonSearch}
+                onPress={() => {
+                  setSearchModalVisible(false);
+                  const parent = navigation.getParent();
+                  (parent as any)?.navigate('Partenaires', { initialSearch: homeSearchQuery.trim() });
+                  setHomeSearchQuery('');
+                }}>
+                <Text style={styles.searchModalButtonSearchText}>Rechercher</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+// Bloc d’affichage des taux cashback permanent et de bienvenue (chips esthétiques)
+function CashbackRatesBlock({
+  permanentRate,
+  welcomeRate,
+  compact,
+}: {
+  permanentRate?: number | null;
+  welcomeRate?: number | null;
+  compact?: boolean;
+}) {
+  const hasPermanent = permanentRate != null && permanentRate >= 0;
+  const hasWelcome = welcomeRate != null && welcomeRate >= 0;
+  if (!hasPermanent && !hasWelcome) return null;
+  return (
+    <View style={[styles.cashbackRatesBlock, compact && styles.cashbackRatesBlockCompact]}>
+      {hasPermanent && (
+        <View style={styles.cashbackItem}>
+          <Ionicons name="pricetag" size={12} color={colors.primary} />
+          <Text style={styles.cashbackRate}>{permanentRate}%</Text>
+          <Text style={styles.cashbackItemLabel}>Permanent</Text>
+        </View>
+      )}
+      {hasPermanent && hasWelcome && <View style={styles.cashbackDivider} />}
+      {hasWelcome && (
+        <View style={styles.cashbackItem}>
+          <Ionicons name="gift" size={12} color="#7C3AED" />
+          <Text style={[styles.cashbackRate, styles.cashbackRateWelcome]}>{welcomeRate}%</Text>
+          <Text style={styles.cashbackItemLabel}>Bienvenue</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Carte Pépite - style Uber Eats : image en haut, logo au centre, bloc blanc en dessous
+function PepiteCard({ partner, onPress }: { partner: PartnerViewModel; onPress: () => void }) {
+  const [logoError, setLogoError] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const backgroundImage = getPartnerImage(partner.name, partner.categoryId);
+  const partnerLogo = getPartnerLogo(partner.name, partner.logoUrl);
+
+  return (
+    <TouchableOpacity style={styles.pepiteCard} activeOpacity={0.9} onPress={onPress}>
+      <View style={styles.pepiteImageWrap}>
+        {!imageError && (
+          <Image
+            source={{ uri: backgroundImage }}
+            style={styles.pepiteBackgroundImage}
+            resizeMode="cover"
+            onError={() => setImageError(true)}
+          />
+        )}
+        <View style={styles.pepiteLogoCenter} pointerEvents="none">
+          {partnerLogo && !logoError ? (
+            <Image
+              source={{ uri: partnerLogo }}
+              style={styles.pepiteLogoCenterImage}
+              resizeMode="contain"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <Text style={styles.pepiteLogoCenterInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
+          )}
+        </View>
+        {(partner.marketingPrograms?.includes('pepites') || partner.isRecommended) && (
+          <View style={styles.pepiteBadgeOnImage}>
+            <Ionicons name="star" size={10} color={colors.accentYellow} />
+            <Text style={styles.pepiteBadgeOnImageText}>Pépite</Text>
+          </View>
+        )}
+      </View>
+      {/* Bloc blanc en dessous */}
+      <View style={styles.pepiteCardContent}>
+        <Text style={styles.pepiteNameBlack} numberOfLines={2}>
+          {partner.name}
+        </Text>
+        {(partner.city || partner.country) && (
+          <Text style={styles.pepiteLocationGray} numberOfLines={1}>
+            {[partner.city, partner.country].filter(Boolean).join(', ')}
+          </Text>
+        )}
+        <CashbackRatesBlock permanentRate={partner.permanentOffer?.rate} welcomeRate={partner.welcomeOffer?.rate} />
+        {typeof partner.pointsPerTransaction === 'number' && partner.pointsPerTransaction > 0 && (
+          <View style={styles.pointsBlock}>
+            <Ionicons name="star" size={10} color={colors.accentYellow} />
+            <Text style={styles.pointsValue}>{partner.pointsPerTransaction} pts</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Carte Partenaire boosté - même style que Pépite, logo au centre, badge "Boosté"
+function BoostedCard({ partner, onPress }: { partner: PartnerViewModel; onPress: () => void }) {
+  const [logoError, setLogoError] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const backgroundImage = getPartnerImage(partner.name, partner.categoryId);
+  const partnerLogo = getPartnerLogo(partner.name, partner.logoUrl);
+
+  return (
+    <TouchableOpacity style={styles.pepiteCard} activeOpacity={0.9} onPress={onPress}>
+      <View style={styles.pepiteImageWrap}>
+        {!imageError && (
+          <Image
+            source={{ uri: backgroundImage }}
+            style={styles.pepiteBackgroundImage}
+            resizeMode="cover"
+            onError={() => setImageError(true)}
+          />
+        )}
+        <View style={styles.pepiteLogoCenter} pointerEvents="none">
+          {partnerLogo && !logoError ? (
+            <Image
+              source={{ uri: partnerLogo }}
+              style={styles.pepiteLogoCenterImage}
+              resizeMode="contain"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <Text style={styles.pepiteLogoCenterInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
+          )}
+        </View>
+        {(partner.marketingPrograms?.includes('boosted') || partner.isBoosted) && (
+          <View style={styles.boostedBadgeOnImage}>
+            <Ionicons name="flash" size={10} color={colors.white} />
+            <Text style={styles.boostedBadgeOnImageText}>Boosté</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.pepiteCardContent}>
+        <Text style={styles.pepiteNameBlack} numberOfLines={2}>
+          {partner.name}
+        </Text>
+        {(partner.city || partner.country) && (
+          <Text style={styles.pepiteLocationGray} numberOfLines={1}>
+            {[partner.city, partner.country].filter(Boolean).join(', ')}
+          </Text>
+        )}
+        <CashbackRatesBlock permanentRate={partner.permanentOffer?.rate} welcomeRate={partner.welcomeOffer?.rate} />
+        {typeof partner.pointsPerTransaction === 'number' && partner.pointsPerTransaction > 0 && (
+          <View style={styles.pointsBlock}>
+            <Ionicons name="star" size={10} color={colors.accentYellow} />
+            <Text style={styles.pointsValue}>{partner.pointsPerTransaction} pts</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Carte Cashback - logo uniquement + nom en dessous (sans image de fond)
+function CashbackCard({ partner, onPress }: { partner: PartnerViewModel; onPress: () => void }) {
+  const [logoError, setLogoError] = useState(false);
+  const partnerLogo = getPartnerLogo(partner.name, partner.logoUrl);
+
+  return (
+    <TouchableOpacity style={styles.logoOnlyCard} activeOpacity={0.9} onPress={onPress}>
+      <View style={[styles.logoOnlyLogoWrap, { backgroundColor: colors.white }]}>
+        {partnerLogo && !logoError ? (
+          <Image
+            source={{ uri: partnerLogo }}
+            style={styles.logoOnlyLogo}
+            resizeMode="cover"
+            onError={() => setLogoError(true)}
+          />
+        ) : (
+          <Text style={styles.logoOnlyInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Carte Partenaires populaires - logo seul (sans nom en dessous)
+function MostSearchedCard({ partner, onPress, cardStyle }: { partner: PartnerViewModel; onPress: () => void; cardStyle?: object }) {
+  const [logoError, setLogoError] = useState(false);
+  const partnerLogo = getPartnerLogo(partner.name, partner.logoUrl);
+
+  return (
+    <TouchableOpacity style={[styles.logoOnlyCard, cardStyle]} activeOpacity={0.85} onPress={onPress}>
+      <View style={[styles.logoOnlyLogoWrap, { backgroundColor: colors.white }]}>
+        {partnerLogo && !logoError ? (
+          <Image
+            source={{ uri: partnerLogo }}
+            style={styles.logoOnlyLogo}
+            resizeMode="cover"
+            onError={() => setLogoError(true)}
+          />
+        ) : (
+          <Text style={styles.logoOnlyInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+type SectionProps = {
+  title: string;
+  subtitle?: string;
+  loading?: boolean;
+  children: React.ReactNode;
+};
+
+function Section({ title, subtitle, loading, children }: SectionProps) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      </View>
+      {loading ? (
+        <ActivityIndicator style={styles.sectionLoader} color={colors.primary} size="large" />
+      ) : (
+        children
+      )}
+    </View>
+  );
+}
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const PEPITE_CARD_WIDTH = 260;
+const AD_PEEK = 20;
+const AD_CARD_WIDTH = SCREEN_WIDTH - 2 * AD_PEEK;
+const AD_GAP = 10;
+const AD_SNAP_INTERVAL = AD_CARD_WIDTH + AD_GAP;
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.slateBackground,
+  },
+  scrollContent: {
+    paddingBottom: spacing.xl * 2,
+  },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingLeft: 0,
+    paddingRight: spacing.lg,
+    paddingBottom: 0,
+    backgroundColor: colors.white,
+  },
+  headerTitleBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  appTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.textMain,
+    letterSpacing: -1,
+    marginLeft: -4,
+  },
+  appTitleLogo: {
+    height: 48,
+    width: 96,
+    marginRight: 0,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  headerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  headerBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: colors.accentRed,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  headerBadgeText: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  // Section Résumé Utilisateur - Identique à Ma cagnotte
+  userSummaryContainer: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    marginTop: spacing.md,
+  },
+  adsSection: {
+    marginBottom: spacing.lg,
+  },
+  adsScrollContent: {
+    paddingHorizontal: AD_PEEK,
+    paddingVertical: spacing.xs,
+    paddingRight: AD_PEEK + AD_GAP,
+  },
+  adCard: {
+    width: AD_CARD_WIDTH,
+    height: AD_CARD_WIDTH,
+    marginRight: AD_GAP,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.greyLight,
+  },
+  adImage: {
+    width: '100%',
+    height: '100%',
+  },
+  adMediaContainer: {
+    width: '100%',
+    height: '100%',
+  },
+  adPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  adTitle: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: spacing.sm,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.white,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  adsPagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  adsDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(107, 107, 107, 0.4)',
+  },
+  adsDotActive: {
+    backgroundColor: colors.primary,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  userSummaryCard: {
+    borderRadius: 32,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    gap: spacing.md,
+  },
+  userSummaryTextBlock: {
+    gap: spacing.xs,
+  },
+  userSummaryLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  userSummaryAmount: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: colors.white,
+  },
+  userSummarySubtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+  },
+  userSummaryPointsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  userSummaryPointsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accentYellow,
+  },
+  userSummaryPointsLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+  },
+  userSummaryPointsValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accentYellow,
+  },
+  userSummaryLoaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  userSummaryLoaderText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+  },
+  // Onglets intégrés dans le card (style Ma cagnotte)
+  userSummaryTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    width: '100%',
+  },
+  userSummaryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    flexGrow: 1,
+    flexBasis: '31%',
+    maxWidth: '31%',
+  },
+  userSummaryTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+  },
+  // Encart partenaires autour de vous
+  partnersNearbyContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  partnersNearbyCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: spacing.md + 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.greyLight,
+  },
+  partnersNearbyContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  partnersNearbyText: {
+    flex: 1,
+  },
+  partnersNearbyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginBottom: spacing.xs / 2,
+  },
+  partnersNearbySubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  // Sections
+  section: {
+    marginTop: spacing.xl * 1.5,
+    paddingHorizontal: spacing.lg,
+  },
+  sectionHeader: {
+    marginBottom: spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.textMain,
+    letterSpacing: -0.3,
+    marginBottom: spacing.xs,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
+  sectionLoader: {
+    marginVertical: spacing.xl * 2,
+  },
+  errorBanner: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  errorBannerText: {
+    fontSize: 13,
+    color: '#991B1B',
+    flex: 1,
+  },
+  errorBannerCta: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  // Pépites - style Uber Eats (image en haut, bloc blanc en dessous)
+  premiumCarousel: {
+    paddingRight: spacing.lg,
+  },
+  pepiteCard: {
+    width: PEPITE_CARD_WIDTH,
+    marginRight: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+  },
+  pepiteImageWrap: {
+    width: '100%',
+    height: 140,
+    backgroundColor: colors.greyLight,
+    position: 'relative',
+  },
+  pepiteBackgroundImage: {
+    width: '100%',
+    height: '100%',
+  },
+  pepiteLogoCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pepiteLogoCenterImage: {
+    width: 72,
+    height: 72,
+  },
+  pepiteLogoCenterInitials: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.white,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  pepiteBadgeOnImage: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  pepiteBadgeOnImageText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  boostedBadgeOnImage: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primaryGreen,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  boostedBadgeOnImageText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  pepiteCardContent: {
+    padding: spacing.md,
+  },
+  pepiteNameBlack: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginBottom: spacing.xs / 2,
+  },
+  pepiteLocationGray: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  cashbackRatesBlock: {
+    marginTop: spacing.sm,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+  },
+  cashbackRatesBlockCompact: {
+    marginTop: spacing.xs,
+  },
+  cashbackItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cashbackRate: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  cashbackRateWelcome: {
+    color: '#7C3AED',
+  },
+  cashbackItemLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  cashbackDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: colors.greyBorder,
+    marginHorizontal: spacing.sm,
+  },
+  pointsBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: spacing.xs,
+  },
+  pointsValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B45309',
+  },
+  pointsLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  // Cartes logo seul + nom (partenaires populaires et plus gros cash back)
+  logoOnlyCard: {
+    width: 50,
+    marginRight: spacing.sm,
+    alignItems: 'center',
+  },
+  logoOnlyCardGrid: {
+    width: '18%',
+    alignItems: 'center',
+    minWidth: 44,
+    maxWidth: 70,
+  },
+  // Grille 5 colonnes pour partenaires populaires
+  popularGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.md,
+    columnGap: spacing.md,
+  },
+  popularGridItem: {
+    alignItems: 'center',
+  },
+  logoOnlyCardInGrid: {
+    width: '100%',
+    marginRight: 0,
+    alignItems: 'center',
+  },
+  logoOnlyLogoWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    marginBottom: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoOnlyLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  logoOnlyInitials: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  logoOnlyName: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMain,
+    textAlign: 'center',
+  },
+  // Cashback carousel
+  cashbackCarousel: {
+    paddingRight: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  // Grille partenaires populaires
+  mostSearchedGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  popularBadge: {
+    marginTop: 2,
+    backgroundColor: colors.greyLight,
+    borderRadius: radius.pill,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  popularBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  searchModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  searchModalContent: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  searchModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginBottom: spacing.md,
+  },
+  searchModalInput: {
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 16,
+    color: colors.textMain,
+    marginBottom: spacing.lg,
+  },
+  searchModalButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'flex-end',
+  },
+  searchModalButtonCancel: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  searchModalButtonCancelText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  searchModalButtonSearch: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+  },
+  searchModalButtonSearchText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  ctaPartnersWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    marginBottom: spacing.xl * 2,
+  },
+  ctaPartnersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 0,
+  },
+  ctaPartnersText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.white,
+  },
+});
