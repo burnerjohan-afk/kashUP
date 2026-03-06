@@ -2,9 +2,9 @@
  * Thème style Uber Eats : fond blanc/noir, accent vert, typo sobre.
  */
 export const colors = {
-  // Primaire (accent principal type Uber Eats)
-  primary: '#05A357',
-  primaryDark: '#048A48',
+  // Primaire = vert carte KashUP (même vert que la carte bancaire)
+  primary: '#047857',
+  primaryDark: '#034d35',
   // Secondaires
   accentYellow: '#FFC043',
   accentRed: '#E11900',
@@ -17,13 +17,13 @@ export const colors = {
   textMain: '#000000',
   textSecondary: '#6B6B6B',
   textTertiary: '#9E9E9E',
-  // Rétrocompatibilité
-  primaryBlue: '#05A357',
-  primaryPurple: '#05A357',
-  primaryGreen: '#05A357',
-  lightBlue: '#E8F5E9',
-  lightPurple: '#E8F5E9',
-  lightGreen: '#E8F5E9',
+  // Même vert que la carte (nuance unique)
+  primaryBlue: '#047857',
+  primaryPurple: '#047857',
+  primaryGreen: '#047857',
+  lightBlue: '#d1fae5',
+  lightPurple: '#d1fae5',
+  lightGreen: '#d1fae5',
   textInverse: '#FFFFFF',
   // Fond ardoise (tech / premium) – utilisé sur tout le site
   slateBackground: '#E4E8EF',
@@ -51,6 +51,10 @@ export const radius = {
   xl: 20,
   pill: 999,
 };
+
+/** Dégradé vert des cartes (accueil, cagnotte, rewards) — à réutiliser pour boutons/onglets actifs */
+export const CARD_GRADIENT_COLORS = ['#034d35', '#047857', '#059669', '#047857', '#065f46'] as const;
+export const CARD_GRADIENT_LOCATIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 
 export const theme = {
   colors,

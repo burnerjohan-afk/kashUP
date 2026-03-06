@@ -227,4 +227,63 @@ export const deleteAssociation = async (id: string) => {
   await prisma.donationAssociation.delete({ where: { id } });
 };
 
+/** Impact dons de l'utilisateur (montants donnés ce mois / cette année) */
+export type DonationImpactDto = { donatedThisMonth: number; donatedThisYear: number };
+export async function getDonationImpactForUser(userId: string): Promise<DonationImpactDto> {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const [monthRows, yearRows] = await Promise.all([
+    prisma.donationImpact.aggregate({
+      where: { userId, createdAt: { gte: startOfMonth } },
+      _sum: { amount: true }
+    }),
+    prisma.donationImpact.aggregate({
+      where: { userId, createdAt: { gte: startOfYear } },
+      _sum: { amount: true }
+    })
+  ]);
+  return {
+    donatedThisMonth: monthRows._sum.amount ?? 0,
+    donatedThisYear: yearRows._sum.amount ?? 0
+  };
+}
+
+/** Créer un don : débit du cashback et enregistrement DonationImpact */
+export async function createDonation(
+  userId: string,
+  associationId: string,
+  amount: number
+): Promise<{ donationId: string; newSoldeCashback: number }> {
+  if (amount <= 0 || !Number.isFinite(amount)) {
+    throw new AppError('Montant invalide', 400);
+  }
+  const association = await prisma.donationAssociation.findFirst({
+    where: { id: associationId, status: 'active', deletedAt: null }
+  });
+  if (!association) {
+    throw new AppError('Association introuvable ou inactive', 404);
+  }
+  const wallet = await prisma.wallet.findUnique({ where: { userId } });
+  if (!wallet) {
+    throw new AppError('Portefeuille introuvable', 404);
+  }
+  if (wallet.soldeCashback < amount) {
+    throw new AppError('Solde cashback insuffisant', 400);
+  }
+  const roundedAmount = Math.round(amount * 100) / 100;
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.wallet.update({
+      where: { userId },
+      data: { soldeCashback: { decrement: roundedAmount } }
+    });
+    const donation = await tx.donationImpact.create({
+      data: { userId, associationId, amount: roundedAmount }
+    });
+    const updated = await tx.wallet.findUniqueOrThrow({ where: { userId } });
+    return { donationId: donation.id, newSoldeCashback: updated.soldeCashback };
+  });
+  return result;
+}
+
 

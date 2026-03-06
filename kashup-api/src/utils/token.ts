@@ -10,8 +10,9 @@ export type JwtPayload = {
   email: string;
 };
 
-const ACCESS_TOKEN_EXPIRATION = '15m';
-const REFRESH_TOKEN_EXPIRATION_SHORT = '7d';
+// 24h pour limiter les "session expirée" en usage normal (refresh reste utilisé)
+const ACCESS_TOKEN_EXPIRATION = '24h';
+const REFRESH_TOKEN_EXPIRATION_SHORT = '14d';
 const REFRESH_TOKEN_EXPIRATION_LONG = '30d';
 
 export const signAccessToken = (payload: JwtPayload) => {

@@ -318,7 +318,12 @@ export const createApp = () => {
     // Pour les autres types ou pas de Content-Type, continuer
     next();
   });
-  app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+  app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+    skip: (req, _res) => {
+      const path = (req.originalUrl ?? req.url ?? req.path ?? '').split('?')[0].toLowerCase();
+      return path.includes('health') || path.includes('debug/network');
+    },
+  }));
 
   // Route health check - publique, pas d'auth requise
   // Répond sur /, /health et /api/v1/health

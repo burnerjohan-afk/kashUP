@@ -13,7 +13,10 @@ export type PartnerViewModel = {
   /** Nom de la catégorie (pour résolution image hero quand categoryId est un CUID) */
   categoryName?: string;
   city: string;
+  /** Affichage : un seul département ou liste "Martinique, Guadeloupe, Guyane" */
   country: string;
+  /** Liste des départements (pour filtrage et affichage) */
+  territories?: string[];
   address?: string;
   cashbackRate: number;
   isBoosted: boolean;
@@ -35,6 +38,8 @@ export type PartnerViewModel = {
   welcomeOffer: PartnerOffer;
   /** Image de couverture pour la fiche (photo perso ou première photo) */
   heroImageUrl?: string;
+  /** Adresses et réseaux par département (pour sélecteur sur la fiche partenaire) */
+  territoryDetails?: Record<string, { address?: string; websiteUrl?: string; facebookUrl?: string; instagramUrl?: string }> | null;
 };
 
 const buildAvatarUrl = (name: string) =>
@@ -42,6 +47,33 @@ const buildAvatarUrl = (name: string) =>
 
 const toNum = (v: unknown): number | undefined =>
   v === undefined || v === null || v === '' ? undefined : Number(v);
+
+/** Normalise territories (API peut renvoyer array, JSON string, ou array avec 1 élément JSON string) */
+function normalizeTerritoriesList(partner: ApiPartner): string[] {
+  const raw = partner.territories;
+  if (Array.isArray(raw) && raw.length > 0) {
+    const first = raw[0];
+    if (typeof first === 'string' && first.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(first);
+        return Array.isArray(parsed) ? parsed : [partner.territory ?? 'Martinique'];
+      } catch {
+        return raw as string[];
+      }
+    }
+    return raw as string[];
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [partner.territory ?? 'Martinique'];
+    } catch {
+      return partner.territory ? [partner.territory] : ['Martinique'];
+    }
+  }
+  if (partner.territory) return [partner.territory];
+  return ['Martinique'];
+}
 
 export const adaptPartnerFromApi = (partner: ApiPartner): PartnerViewModel => {
   const baseRate = toNum(partner.tauxCashbackBase) ?? 0;
@@ -60,7 +92,14 @@ export const adaptPartnerFromApi = (partner: ApiPartner): PartnerViewModel => {
     categoryId: partner.categoryId ?? partner.category?.id ?? '',
     categoryName: partner.category?.name ?? undefined,
     city: partner.shortDescription ?? partner.category?.name ?? 'À découvrir',
-    country: partner.territory ?? (Array.isArray(partner.territories) ? partner.territories[0] : undefined) ?? 'Martinique',
+    country: (() => {
+      const list = normalizeTerritoriesList(partner);
+      return list.join(', ');
+    })(),
+    territories: (() => {
+      const list = normalizeTerritoriesList(partner);
+      return list.length > 0 ? list : undefined;
+    })(),
     address: partner.address ?? undefined,
     cashbackRate: permanentRate,
     isBoosted,
@@ -96,6 +135,7 @@ export const adaptPartnerFromApi = (partner: ApiPartner): PartnerViewModel => {
       Array.isArray(partner.photos) && partner.photos.length > 0
         ? partner.photos[0]
         : undefined,
+    territoryDetails: partner.territoryDetails && typeof partner.territoryDetails === 'object' ? partner.territoryDetails : undefined,
   };
 };
 

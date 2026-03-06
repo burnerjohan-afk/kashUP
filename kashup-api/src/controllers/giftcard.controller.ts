@@ -7,6 +7,13 @@ import {
   listPredefinedGiftOffers,
   listUserGiftCards,
   purchaseGiftCard,
+  sendPredefinedGift,
+  sendBoxUp,
+  sendSelectionUp,
+  sendPredefinedGiftWithCard,
+  sendBoxUpWithCard,
+  sendSelectionUpWithCard,
+  getAmountEurosForGiftPayment,
   listGiftCardOrders,
   getGiftCardConfig,
   updateGiftCardConfig,
@@ -32,6 +39,8 @@ import {
   updateCarteUpPredefinie,
   deleteCarteUpPredefinie,
 } from '../services/giftCard.service';
+import { createGiftCardPaymentIntent, verifyGiftCardPaymentIntent } from '../services/stripe.service';
+import type { CreatePaymentIntentForGiftInput, ConfirmCardPaymentForGiftInput } from '../schemas/giftCard.schema';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
@@ -67,6 +76,7 @@ function mapBoxToBoxUpFormat(box: {
   imageUrl: string | null;
   cashbackInfo: string | null;
   value: number;
+  cashbackRate?: number | null;
   active: boolean;
   items: Array<{
     partnerId: string | null;
@@ -81,6 +91,7 @@ function mapBoxToBoxUpFormat(box: {
     description: box.description,
     imageUrl: box.imageUrl ?? undefined,
     value: box.value,
+    cashbackRate: box.cashbackRate ?? undefined,
     commentCaMarche: box.cashbackInfo ?? undefined,
     status: box.active ? ('active' as const) : ('inactive' as const),
     partenaires: box.items.map((item) => ({
@@ -135,6 +146,89 @@ export const purchaseGiftCardHandler = asyncHandler(async (req: Request, res: Re
   }
   const purchase = await purchaseGiftCard(req.user.sub, req.body);
   sendSuccess(res, purchase, null, 201);
+});
+
+export const sendPredefinedGiftHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new AppError('Authentification requise', 401);
+  }
+  const result = await sendPredefinedGift(req.user.sub, req.body);
+  sendSuccess(res, result);
+});
+
+export const sendBoxUpHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new AppError('Authentification requise', 401);
+  }
+  const result = await sendBoxUp(req.user.sub, req.body);
+  sendSuccess(res, result);
+});
+
+export const sendSelectionUpHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new AppError('Authentification requise', 401);
+  }
+  const result = await sendSelectionUp(req.user.sub, req.body);
+  sendSuccess(res, result);
+});
+
+/** Créer une intention de paiement Stripe pour offrir une carte/box (Apple Pay / Google Pay). */
+export const createPaymentIntentForGiftHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new AppError('Authentification requise', 401);
+  }
+  const input = req.body as CreatePaymentIntentForGiftInput;
+  const amountEuros = await getAmountEurosForGiftPayment(input);
+  const amountCents = Math.round(amountEuros * 100);
+  if (amountCents < 50) {
+    throw new AppError('Le montant minimum est de 0,50 €', 400);
+  }
+  const { clientSecret, paymentIntentId } = await createGiftCardPaymentIntent(
+    amountCents,
+    req.user.sub,
+    { giftType: input.giftType }
+  );
+  sendSuccess(res, { clientSecret, paymentIntentId });
+});
+
+/** Confirmer un paiement carte (après succès Stripe côté client) et créer l'envoi du cadeau. */
+export const confirmCardPaymentForGiftHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new AppError('Authentification requise', 401);
+  }
+  const input = req.body as ConfirmCardPaymentForGiftInput;
+  const { paymentIntentId, ...createPayload } = input;
+  const amountEuros = await getAmountEurosForGiftPayment(createPayload as CreatePaymentIntentForGiftInput);
+  const amountCents = Math.round(amountEuros * 100);
+  const ok = await verifyGiftCardPaymentIntent(paymentIntentId, req.user.sub, amountCents);
+  if (!ok) {
+    throw new AppError('Paiement invalide ou déjà utilisé', 400);
+  }
+
+  if (input.giftType === 'carte_up') {
+    const result = await sendPredefinedGiftWithCard(req.user.sub, {
+      offerId: input.offerId,
+      beneficiaryEmail: input.beneficiaryEmail,
+      message: input.message,
+    });
+    return sendSuccess(res, result);
+  }
+  if (input.giftType === 'box_up') {
+    const result = await sendBoxUpWithCard(req.user.sub, {
+      boxId: input.boxId,
+      beneficiaryEmail: input.beneficiaryEmail,
+      message: input.message,
+    });
+    return sendSuccess(res, result);
+  }
+  const result = await sendSelectionUpWithCard(req.user.sub, {
+    amount: input.amount,
+    beneficiaryEmail: input.beneficiaryEmail,
+    message: input.message,
+    partnerId: input.partnerId,
+    partnerName: input.partnerName,
+  });
+  sendSuccess(res, result);
 });
 
 // Contrôleurs admin
@@ -210,6 +304,7 @@ export const createBoxUpHandler = asyncHandler(async (req: Request, res: Respons
     imageUrl,
     partenaires: req.body.partenaires,
     commentCaMarche: req.body.commentCaMarche,
+    cashbackRate: req.body.cashbackRate != null && req.body.cashbackRate !== '' ? Number(req.body.cashbackRate) : null,
     status: (req.body.status === 'inactive' ? 'inactive' : 'active') as 'active' | 'inactive',
   };
   if (!payload.nom || !payload.description) {
@@ -230,6 +325,7 @@ export const updateBoxUpHandler = asyncHandler(async (req: Request, res: Respons
   if (imageUrl !== undefined) payload.imageUrl = imageUrl;
   if (req.body.partenaires !== undefined) payload.partenaires = req.body.partenaires;
   if (req.body.commentCaMarche !== undefined) payload.commentCaMarche = req.body.commentCaMarche;
+  if (req.body.cashbackRate !== undefined) payload.cashbackRate = req.body.cashbackRate !== '' ? Number(req.body.cashbackRate) : null;
   if (req.body.status !== undefined) payload.status = req.body.status;
   const boxUp = await updateGiftBoxAdmin(req.params.id, payload);
   sendSuccess(res, boxUp);
@@ -288,6 +384,7 @@ export const createCarteUpLibreHandler = asyncHandler(async (req: Request, res: 
     partenairesEligibles: req.body.partenairesEligibles ?? '[]',
     conditions: req.body.conditions,
     commentCaMarche: req.body.commentCaMarche,
+    cashbackRate: req.body.cashbackRate != null && req.body.cashbackRate !== '' ? Number(req.body.cashbackRate) : null,
     status: req.body.status === 'inactive' ? 'inactive' : 'active',
   };
   if (!payload.nom || !payload.description) {
@@ -307,6 +404,7 @@ export const updateCarteUpLibreHandler = asyncHandler(async (req: Request, res: 
   if (req.body.partenairesEligibles !== undefined) payload.partenairesEligibles = req.body.partenairesEligibles;
   if (req.body.conditions !== undefined) payload.conditions = req.body.conditions;
   if (req.body.commentCaMarche !== undefined) payload.commentCaMarche = req.body.commentCaMarche;
+  if (req.body.cashbackRate !== undefined) payload.cashbackRate = req.body.cashbackRate !== '' ? Number(req.body.cashbackRate) : null;
   if (req.body.status !== undefined) payload.status = req.body.status;
   const data = await updateCarteUpLibreConfig(req.params.id, payload as any);
   sendSuccess(res, data);
@@ -330,7 +428,9 @@ export const getCarteUpPredefinieByIdHandler = asyncHandler(async (req: Request,
 });
 
 export const createCarteUpPredefinieHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : undefined;
+  const imageUrl = req.file
+    ? processUploadedFile(req.file, 'gift-cards')
+    : (typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() !== '' ? req.body.imageUrl.trim() : undefined);
   const montant = Number(req.body.montant);
   if (!Number.isFinite(montant) || montant <= 0) {
     throw new AppError('Le montant doit être un nombre positif', 400);
@@ -345,6 +445,7 @@ export const createCarteUpPredefinieHandler = asyncHandler(async (req: Request, 
     dureeValiditeJours: req.body.dureeValiditeJours ? Number(req.body.dureeValiditeJours) : undefined,
     conditions: req.body.conditions,
     commentCaMarche: req.body.commentCaMarche,
+    cashbackRate: req.body.cashbackRate != null && req.body.cashbackRate !== '' ? Number(req.body.cashbackRate) : null,
     status: req.body.status === 'inactive' ? 'inactive' : 'active',
   };
   if (!payload.nom || !payload.partenaireId || !payload.description) {
@@ -355,7 +456,9 @@ export const createCarteUpPredefinieHandler = asyncHandler(async (req: Request, 
 });
 
 export const updateCarteUpPredefinieHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : undefined;
+  const imageUrl = req.file
+    ? processUploadedFile(req.file, 'gift-cards')
+    : (typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() !== '' ? req.body.imageUrl.trim() : undefined);
   const payload: Record<string, unknown> = {};
   if (req.body.nom !== undefined) payload.nom = req.body.nom;
   if (req.body.partenaireId !== undefined) payload.partenaireId = req.body.partenaireId;
@@ -366,6 +469,7 @@ export const updateCarteUpPredefinieHandler = asyncHandler(async (req: Request, 
   if (req.body.dureeValiditeJours !== undefined) payload.dureeValiditeJours = Number(req.body.dureeValiditeJours);
   if (req.body.conditions !== undefined) payload.conditions = req.body.conditions;
   if (req.body.commentCaMarche !== undefined) payload.commentCaMarche = req.body.commentCaMarche;
+  if (req.body.cashbackRate !== undefined) payload.cashbackRate = req.body.cashbackRate !== '' ? Number(req.body.cashbackRate) : null;
   if (req.body.status !== undefined) payload.status = req.body.status;
   const data = await updateCarteUpPredefinie(req.params.id, payload as any);
   sendSuccess(res, data);

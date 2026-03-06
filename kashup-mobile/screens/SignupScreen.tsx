@@ -1,20 +1,41 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import * as Google from 'expo-auth-session/providers/google';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { MainStackParamList } from '../navigation/MainStack';
+import { AuthStackParamList } from '../navigation/AuthStack';
+import { formatApiError } from '../src/utils/error-handler';
+
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
+const iosClientIdForHook =
+  Platform.OS === 'ios' ? (GOOGLE_IOS_CLIENT_ID || 'google-ios-not-configured') : undefined;
 
 export default function SignupScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const { signUp, loginWithApple, loginWithGoogle } = useAuth();
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [googleRequest, , googlePromptAsync] = Google.useIdTokenAuthRequest({
+    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    iosClientId: iosClientIdForHook,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+  });
+
+  const isGoogleConfigured = Boolean(
+    GOOGLE_WEB_CLIENT_ID &&
+      (Platform.OS !== 'ios' || GOOGLE_IOS_CLIENT_ID) &&
+      (Platform.OS !== 'android' || GOOGLE_ANDROID_CLIENT_ID)
+  );
 
   const updateField = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -23,22 +44,43 @@ export default function SignupScreen() {
   const handleApple = async () => {
     try {
       await loginWithApple();
-      // ⚠️ RGPD: Rediriger vers l'écran de consentement après inscription
-      navigation.navigate('Consent');
     } catch (err) {
       Alert.alert('Apple', (err as Error).message);
     }
   };
 
-  const handleGoogle = async () => {
-    try {
-      await loginWithGoogle();
-      // ⚠️ RGPD: Rediriger vers l'écran de consentement après inscription
-      navigation.navigate('Consent');
-    } catch (err) {
-      Alert.alert('Google', (err as Error).message);
+  const handleGoogle = useCallback(async () => {
+    if (!isGoogleConfigured || !googleRequest) {
+      Alert.alert(
+        'Google non configuré',
+        'Pour vous inscrire avec Google, les identifiants OAuth doivent être définis.\n\n' +
+          'Application : dans .env ou .env.local, ajoutez EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID (iOS) et EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID (Android).\n\n' +
+          'API : dans le .env de kashup-api, ajoutez GOOGLE_CLIENT_ID (même ID que le client Web Google).'
+      );
+      return;
     }
-  };
+    setGoogleLoading(true);
+    try {
+      const result = await googlePromptAsync();
+      if (result?.type !== 'success') {
+        if (result?.type !== 'cancel') {
+          Alert.alert('Google', 'Connexion Google annulée ou échouée.');
+        }
+        return;
+      }
+      const idToken = result.params?.id_token;
+      if (!idToken) {
+        Alert.alert('Google', 'Token Google absent. Réessayez.');
+        return;
+      }
+      await loginWithGoogle(idToken);
+      // Après connexion, RootNavigator affiche MainStack
+    } catch (err) {
+      Alert.alert('Inscription avec Google', formatApiError(err));
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [isGoogleConfigured, googleRequest, googlePromptAsync, loginWithGoogle]);
 
   const handleSubmit = async () => {
     try {
@@ -48,8 +90,7 @@ export default function SignupScreen() {
         email: form.email,
         password: form.password,
       });
-      // ⚠️ RGPD: Rediriger vers l'écran de consentement après inscription
-      navigation.navigate('Consent');
+      // Après inscription, RootNavigator affiche MainStack (app principale)
     } catch (err) {
       Alert.alert('Inscription', (err as Error).message);
     }
@@ -66,13 +107,19 @@ export default function SignupScreen() {
         <Text style={styles.subtitle}>Rejoignez la communauté qui booste l’économie locale.</Text>
 
         <View style={styles.socialRow}>
-          <TouchableOpacity style={styles.socialButton} onPress={handleApple}>
-            <Ionicons name="logo-apple" size={18} color={colors.textMain} />
-            <Text style={styles.socialText}>Apple</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton} onPress={handleGoogle}>
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity style={styles.socialButton} onPress={handleApple}>
+              <Ionicons name="logo-apple" size={18} color={colors.textMain} />
+              <Text style={styles.socialText}>Apple</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.socialButton, (!isGoogleConfigured || googleLoading) && styles.socialButtonDisabled]}
+            onPress={handleGoogle}
+            disabled={googleLoading}
+          >
             <Ionicons name="logo-google" size={18} color="#EA4335" />
-            <Text style={styles.socialText}>Google</Text>
+            <Text style={styles.socialText}>{googleLoading ? 'Connexion…' : 'Google'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -171,6 +218,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: spacing.xs,
+  },
+  socialButtonDisabled: {
+    opacity: 0.6,
   },
   socialText: {
     fontWeight: '600',

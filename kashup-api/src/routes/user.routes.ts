@@ -14,6 +14,10 @@ import {
   getCoffreFortHistoryHandler,
   getMyReferralsInviteesHandler,
   getMyReferralsSummaryHandler,
+  getMeDonationImpactHandler,
+  postDonationHandler,
+  getMePartnerHandler,
+  getMePartnerStatsHandler,
   updateMyConsent,
   getMyConsent,
   exportMyDataHandler,
@@ -38,6 +42,10 @@ router.get('/badges', getMeBadges);
 router.get('/gift-cards', getMeGiftCards);
 router.get('/referrals/summary', getMyReferralsSummaryHandler);
 router.get('/referrals/invitees', getMyReferralsInviteesHandler);
+router.get('/donations/impact', getMeDonationImpactHandler);
+router.post('/donations', postDonationHandler);
+router.get('/partner', getMePartnerHandler);
+router.get('/partner/stats', getMePartnerStatsHandler);
 
 // Routes RGPD
 router.get('/consent', getMyConsent);

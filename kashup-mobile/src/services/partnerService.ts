@@ -46,6 +46,8 @@ export type Partner = {
   marketingPrograms?: Array<'pepites' | 'boosted' | 'most-searched'>;
   /** URLs des photos du partenaire (la première peut servir d'image hero) */
   photos?: string[];
+  /** Adresses et réseaux par département : { Martinique: { address, websiteUrl, ... }, ... } */
+  territoryDetails?: Record<string, { address?: string; websiteUrl?: string; facebookUrl?: string; instagramUrl?: string }> | null;
 };
 
 /** Normalise un partenaire reçu de l'API (category.id → categoryId, territories[0] → territory) */

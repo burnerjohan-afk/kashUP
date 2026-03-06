@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+/* Thème KashUP — design premium type Joko / Naomi */
+:root {
+  --background: #f8fafc;
+  --background-dark: #f1f5f9;
+  --surface: #ffffff;
+  --foreground: #0f172a;
+  /* Vert carte KashUP (aligné sur la carte bancaire) */
+  --primary: #047857;
+  --primary-dark: #034d35;
+  --primary-light: #d1fae5;
+  --accent-yellow: #f59e0b;
+  --accent-violet: #7c3aed;
+  --accent-amber: #b45309;
+  --grey-border: #e2e8f0;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --hero-from: #0f0725;
+  --hero-via: #1e1b4b;
+  --hero-to: #312e81;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+  --radius-card: 1rem;
+  --radius-button: 0.75rem;
+  --section-py: 5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Titres — impact visuel type Joko/Naomi */
+.heading-hero {
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+.heading-section {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Cartes premium */
+.card-premium {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--grey-border);
+}
+
+.card-premium:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary-light);
+}
+
+/* Animations au scroll — effet type Joko */
+.animate-stagger > * {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.animate-stagger.animate-stagger-visible > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+.animate-stagger.animate-stagger-visible > *:nth-child(1) { transition-delay: 0ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(2) { transition-delay: 80ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(3) { transition-delay: 160ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(4) { transition-delay: 240ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(5) { transition-delay: 320ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(6) { transition-delay: 400ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(7) { transition-delay: 480ms; }
+.animate-stagger.animate-stagger-visible > *:nth-child(8) { transition-delay: 560ms; }
+
+/* Hero : gradient animé en arrière-plan */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.hero-gradient-animated {
+  background: linear-gradient(165deg, #0c0618 0%, #15102a 25%, #1e1b4b 60%, #312e81 100%);
+  background-size: 200% 200%;
+  animation: gradient-shift 14s ease infinite;
+}
+
+/* Shimmer léger sur les cartes au hover */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.card-premium {
+  position: relative;
+  overflow: hidden;
+}
+.card-premium::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.04),
+    transparent
+  );
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+.card-premium:hover::after {
+  animation: shimmer 0.8s ease;
+}
+
+/* Bouton CTA : léger pulse au hover */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 4px 14px 0 rgb(5 150 105 / 0.35); }
+  50% { box-shadow: 0 4px 20px 4px rgb(5 150 105 / 0.45); }
+}
+
+.btn-cta-animate:hover {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}

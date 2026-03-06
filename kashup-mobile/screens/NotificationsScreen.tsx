@@ -13,7 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 
-import { colors, radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import { useNotifications, NotificationCategory, AppNotification } from '../context/NotificationsContext';
 
 const FILTERS: { key: NotificationCategory | 'all'; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -80,7 +80,12 @@ export default function NotificationsScreen() {
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <LinearGradient colors={[colors.primaryBlue, colors.primaryPurple]} style={styles.hero}>
+      <LinearGradient
+        colors={[...CARD_GRADIENT_COLORS]}
+        locations={[...CARD_GRADIENT_LOCATIONS]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}>
         <View style={styles.heroTopRow}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={20} color={colors.white} />
@@ -109,14 +114,25 @@ export default function NotificationsScreen() {
             const active = item.key === activeFilter;
             return (
               <TouchableOpacity
-                style={[styles.filterChip, active && styles.filterChipActive]}
-                onPress={() => setActiveFilter(item.key)}>
-                <Ionicons
-                  name={item.icon}
-                  size={16}
-                  color={active ? colors.white : colors.textSecondary}
-                />
-                <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>{item.label}</Text>
+                style={[styles.filterChipWrap, active && styles.filterChipWrapActive]}
+                onPress={() => setActiveFilter(item.key)}
+                activeOpacity={0.85}>
+                {active ? (
+                  <LinearGradient
+                    colors={[...CARD_GRADIENT_COLORS]}
+                    locations={[...CARD_GRADIENT_LOCATIONS]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.filterChip, styles.filterChipActive]}>
+                    <Ionicons name={item.icon} size={16} color={colors.white} />
+                    <Text style={[styles.filterChipLabel, styles.filterChipLabelActive]}>{item.label}</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.filterChip}>
+                    <Ionicons name={item.icon} size={16} color={colors.textSecondary} />
+                    <Text style={styles.filterChipLabel}>{item.label}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -190,6 +206,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
+  filterChipWrap: {
+    borderRadius: radius.pill,
+    marginRight: spacing.sm,
+    overflow: 'hidden',
+  },
+  filterChipWrapActive: {
+    overflow: 'hidden',
+  },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -200,11 +224,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     backgroundColor: colors.white,
-    marginRight: spacing.sm,
   },
   filterChipActive: {
-    backgroundColor: colors.primaryBlue,
-    borderColor: colors.primaryBlue,
+    borderWidth: 0,
   },
   filterChipLabel: {
     fontSize: 13,

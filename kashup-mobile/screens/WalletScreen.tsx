@@ -14,19 +14,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import type { CagnotteStackParamList } from '../navigation/CagnotteStack';
 import { useWallet } from '@/src/hooks/useWallet';
 import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
 import { useNotifications } from '../context/NotificationsContext';
 
 type WalletTab = 'Coffre-fort' | 'Don' | 'Bons d’achat';
-
-const walletDescriptions: Record<WalletTab, string> = {
-  'Coffre-fort': 'Mettez de côté votre cashback pour le booster plus tard.',
-  Don: 'Soutenez une cause locale en partageant votre cagnotte.',
-  'Bons d’achat': 'Transformez votre cagnotte en cartes UP chez nos partenaires.',
-};
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -55,14 +49,12 @@ export default function WalletScreen() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleNotificationPress = useCallback(() => {
-    let nav: any = navigation;
-    while (nav?.getParent?.()) nav = nav.getParent();
-    nav?.navigate('Accueil', { screen: 'Notifications' });
+    const tabNav = (navigation as any).getParent?.();
+    tabNav?.navigate('Accueil', { screen: 'Notifications' });
   }, [navigation]);
   const handleProfilePress = useCallback(() => {
-    let nav: any = navigation;
-    while (nav?.getParent?.()) nav = nav.getParent();
-    nav?.navigate('Accueil', { screen: 'Profile' });
+    const tabNav = (navigation as any).getParent?.();
+    tabNav?.navigate('Accueil', { screen: 'Profile' });
   }, [navigation]);
 
   const [walletTab, setWalletTab] = useState<WalletTab>('Coffre-fort');
@@ -79,6 +71,12 @@ export default function WalletScreen() {
   const monthlyInjected = data.wallet?.monthlyInjected ?? personalImpact.monthlyInjected;
   const personalProgress =
     monthlyObjective > 0 ? Math.min(100, (monthlyInjected / monthlyObjective) * 100) : 0;
+
+  const handleScanQR = useCallback(() => {
+    let nav: any = navigation;
+    while (nav?.getParent?.()) nav = nav.getParent();
+    nav?.navigate('QRScan');
+  }, [navigation]);
 
   const handleWalletTabPress = (tab: WalletTab) => {
     if (tab === 'Coffre-fort') {
@@ -125,7 +123,17 @@ export default function WalletScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} />}
       >
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Ma Cagnotte</Text>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerTitle}>Ma Cagnotte</Text>
+            <TouchableOpacity
+              style={styles.scanButton}
+              onPress={handleScanQR}
+              activeOpacity={0.8}
+              accessibilityLabel="Scanner un QR code">
+              <Ionicons name="qr-code-outline" size={24} color={colors.primary} />
+              <Text style={styles.scanButtonText}>Scan QR</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerSubtitle}>Votre pouvoir d’achat et votre impact local</Text>
         </View>
 
@@ -137,52 +145,63 @@ export default function WalletScreen() {
         )}
 
         <View style={styles.userSummaryContainer}>
-          <LinearGradient colors={[colors.primary, colors.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.userSummaryCard}>
-          <View style={styles.userSummaryTextBlock}>
-            <Text style={styles.userSummaryLabel}>Mon KashUP</Text>
-            <Text style={styles.userSummaryAmount}>{formatCurrency(walletAmount)}</Text>
-            <Text style={styles.userSummarySubtitle}>C’est le montant disponible grâce à vos achats locaux.</Text>
-            <View style={styles.userSummaryPointsRow}>
-              <View style={styles.userSummaryPointsDot} />
-              <Text style={styles.userSummaryPointsLabel}>Points KashUP</Text>
-              <Text style={styles.userSummaryPointsValue}>{formatPoints(walletPoints)}</Text>
-            </View>
-            {loading && (
-              <View style={styles.userSummaryLoaderRow}>
-                <ActivityIndicator size="small" color={colors.white} />
-                <Text style={styles.userSummaryLoaderText}>Mise à jour des données…</Text>
+          <View style={styles.userSummaryCardWrap}>
+            <View style={[styles.cardRing, styles.cardRing1]} />
+            <View style={[styles.cardRing, styles.cardRing2]} />
+            <View style={[styles.cardRing, styles.cardRing3]} />
+            <View style={[styles.cardRing, styles.cardRing4]} />
+            <LinearGradient
+              colors={['#034d35', '#047857', '#059669', '#047857', '#065f46']}
+              locations={[0, 0.25, 0.5, 0.75, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.userSummaryCard}>
+              <View style={styles.userSummaryTextBlock}>
+                <Text style={[styles.userSummaryLabel, styles.userSummaryLabelNowrap]} numberOfLines={1}>Carte{"\u00A0"}UP</Text>
+                <Text style={styles.userSummaryAmount}>{formatCurrency(walletAmount)}</Text>
+                <Text style={styles.userSummarySubtitle}>C’est le montant disponible grâce à vos achats locaux.</Text>
+                <View style={styles.userSummaryPointsRow}>
+                  <View style={styles.userSummaryPointsDot} />
+                  <Text style={styles.userSummaryPointsLabel}>Points KashUP</Text>
+                  <Text style={styles.userSummaryPointsValue}>{formatPoints(walletPoints)}</Text>
+                </View>
+                {loading && (
+                  <View style={styles.userSummaryLoaderRow}>
+                    <ActivityIndicator size="small" color={colors.white} />
+                    <Text style={styles.userSummaryLoaderText}>Mise à jour des données…</Text>
+                  </View>
+                )}
               </View>
-            )}
+              <View style={styles.userSummaryTabs}>
+                {walletSegments.map((tab) => {
+                  const active = tab === walletTab;
+                  const isCartesUp = tab === 'Bons d\'achat';
+                  return (
+                    <TouchableOpacity
+                      key={tab}
+                      style={[styles.userSummaryTab, active && styles.userSummaryTabActive]}
+                      onPress={() => handleWalletTabPress(tab)}
+                      activeOpacity={0.85}>
+                      <Ionicons
+                        name={
+                          tab === 'Coffre-fort'
+                            ? 'lock-closed-outline'
+                            : tab === 'Don'
+                            ? 'heart-outline'
+                            : 'gift-outline'
+                        }
+                        size={16}
+                        color={colors.primaryDark}
+                      />
+                      <Text style={[styles.userSummaryTabText, active && styles.userSummaryTabTextActive]} numberOfLines={1}>
+                        {isCartesUp ? 'Cartes\u00A0UP' : tab}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </LinearGradient>
           </View>
-          <View style={styles.userSummaryTabs}>
-            {walletSegments.map((tab) => {
-              const active = tab === walletTab;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.userSummaryTab, active && styles.userSummaryTabActive]}
-                  onPress={() => handleWalletTabPress(tab)}
-                  activeOpacity={0.85}>
-                  <Ionicons
-                    name={
-                      tab === 'Coffre-fort'
-                        ? 'lock-closed-outline'
-                        : tab === 'Don'
-                        ? 'heart-outline'
-                        : 'gift-outline'
-                    }
-                    size={16}
-                    color={active ? colors.primaryDark : 'rgba(255,255,255,0.95)'}
-                  />
-                  <Text style={[styles.userSummaryTabText, active && styles.userSummaryTabTextActive]}>
-                    {tab === 'Bons d’achat' ? 'Cartes UP' : tab}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <Text style={styles.userSummarySegmentDescription}>{walletDescriptions[walletTab]}</Text>
-          </LinearGradient>
         </View>
 
         <View style={styles.section}>
@@ -281,7 +300,7 @@ export default function WalletScreen() {
                 </View>
                 <View style={styles.kashupPillWrap}>
                   <View style={styles.kashupPill}>
-                    <Ionicons name="heart" size={12} color={colors.white} />
+                    <Ionicons name="heart" size={12} color={colors.primary} />
                     <Text style={styles.kashupPillText}>Communauté</Text>
                   </View>
                 </View>
@@ -393,15 +412,87 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-  // Carte Mon KashUP – mêmes styles que la page d'accueil
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.greyLight,
+  },
+  scanButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  // Carte Carte UP – même design et taille que la page d'accueil
   userSummaryContainer: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.xl,
     marginTop: spacing.md,
   },
+  userSummaryCardWrap: {
+    aspectRatio: 1.586,
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  cardRing: {
+    position: 'absolute',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'transparent',
+  },
+  cardRing1: {
+    width: 220,
+    height: 220,
+    top: '50%',
+    left: '50%',
+    marginLeft: -110,
+    marginTop: -110,
+  },
+  cardRing2: {
+    width: 280,
+    height: 280,
+    top: '50%',
+    left: '50%',
+    marginLeft: -140,
+    marginTop: -140,
+    borderColor: 'rgba(212,175,55,0.2)',
+  },
+  cardRing3: {
+    width: 360,
+    height: 360,
+    top: '50%',
+    left: '50%',
+    marginLeft: -180,
+    marginTop: -180,
+  },
+  cardRing4: {
+    width: 440,
+    height: 440,
+    top: '50%',
+    left: '50%',
+    marginLeft: -220,
+    marginTop: -220,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   userSummaryCard: {
-    borderRadius: 32,
+    borderRadius: 20,
     padding: spacing.lg,
+    marginBottom: spacing.xl,
     gap: spacing.md,
   },
   userSummaryTextBlock: {
@@ -412,6 +503,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  userSummaryLabelNowrap: {
+    flexShrink: 0,
   },
   userSummaryAmount: {
     fontSize: 34,
@@ -456,7 +550,7 @@ const styles = StyleSheet.create({
   },
   userSummaryTabs: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: spacing.sm,
     width: '100%',
   },
@@ -466,30 +560,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: colors.white,
     flexGrow: 1,
-    flexBasis: '31%',
-    maxWidth: '31%',
+    flexBasis: 0,
+    minWidth: 0,
   },
   userSummaryTabActive: {
     backgroundColor: colors.white,
   },
   userSummaryTabText: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
+    color: colors.primaryDark,
+    flexShrink: 0,
   },
   userSummaryTabTextActive: {
     color: colors.primaryDark,
   },
-  userSummarySegmentDescription: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
-  },
   section: {
-    marginTop: spacing.xl * 1.5,
+    marginTop: spacing.xl * 1.5 - 20,
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
@@ -714,13 +805,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
+    backgroundColor: 'rgba(5,163,87,0.12)',
     borderRadius: radius.pill,
   },
   kashupPillText: {
-    color: colors.white,
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createOfferHandler, getCurrentOffers, getOffers, updateOfferHandler } from '../controllers/offer.controller';
+import { createOfferHandler, getCurrentOffers, getOffers, updateOfferHandler, useOfferHandler } from '../controllers/offer.controller';
 import { authMiddleware, requireRoles } from '../middlewares/auth';
 import { USER_ROLE } from '../types/domain';
 import { uploadSingle } from '../config/upload';
@@ -28,6 +28,9 @@ router.post('/debug', (req, res) => {
 
 /** Offres actuellement en cours (app / public). */
 router.get('/current', getCurrentOffers);
+
+/** Valider l'utilisation d'une offre par un utilisateur (décrémente le stock restant). Authentification requise. */
+router.post('/:id/use', authMiddleware, useOfferHandler);
 
 /** Toutes les offres pour le back office (?status=all|active|scheduled|expired). */
 router.get('/', authMiddleware, requireRoles(USER_ROLE.admin), getOffers);

@@ -2,10 +2,14 @@ import { NextFunction, Request, Response } from 'express';
 import { AppError } from '../utils/errors';
 import { verifyToken } from '../utils/token';
 import { USER_ROLE, UserRole } from '../types/domain';
+import logger from '../utils/logger';
 
 export const authMiddleware = (req: Request, _res: Response, next: NextFunction) => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn({ path: req.path, hasAuth: !!req.headers.authorization }, '[auth] 401 Token manquant');
+    }
     return next(new AppError('Token manquant', 401));
   }
 
@@ -21,6 +25,9 @@ export const authMiddleware = (req: Request, _res: Response, next: NextFunction)
     };
     return next();
   } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn({ path: req.path, err: (error as Error).message }, '[auth] 401 Token invalide ou expiré');
+    }
     return next(new AppError('Token invalide', 401, (error as Error).message));
   }
 };

@@ -22,6 +22,9 @@ import {
   withdrawFromCoffre
 } from '../services/coffreFort.service';
 import { updateUserConsent, getUserConsent } from '../services/consent.service';
+import { getDonationImpactForUser, createDonation } from '../services/donation.service';
+import { getPartner, getPartnerDashboardStats, PartnerDashboardFilters } from '../services/partner.service';
+import prisma from '../config/prisma';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
@@ -125,6 +128,58 @@ export const getMyReferralsInviteesHandler = asyncHandler(async (req: Request, r
   const userId = ensureAuth(req);
   const invitees = await getReferralsInvitees(userId);
   sendSuccess(res, invitees);
+});
+
+/** GET /me/donations/impact — montants donnés ce mois / cette année */
+export const getMeDonationImpactHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = ensureAuth(req);
+  const impact = await getDonationImpactForUser(userId);
+  sendSuccess(res, impact);
+});
+
+/** POST /me/donations — créer un don (débit cashback → association) */
+export const postDonationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = ensureAuth(req);
+  const associationId = req.body?.associationId;
+  const amount = Number(req.body?.amount);
+  if (!associationId || typeof associationId !== 'string') {
+    throw new AppError('associationId requis', 400);
+  }
+  const result = await createDonation(userId, associationId, amount);
+  sendSuccess(res, result, null, 201, 'Don enregistré');
+});
+
+/** GET /me/partner — infos partenaire pour l'espace partenaire (role=partner) */
+export const getMePartnerHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = ensureAuth(req);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, partnerId: true }
+  });
+  if (!user || user.role !== 'partner' || !user.partnerId) {
+    throw new AppError('Accès partenaire non autorisé', 403);
+  }
+  const partner = await getPartner(user.partnerId);
+  sendSuccess(res, partner);
+});
+
+/** GET /me/partner/stats — stats dashboard partenaire (CA, users, par jour/mois, genre, âge) */
+export const getMePartnerStatsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = ensureAuth(req);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, partnerId: true }
+  });
+  if (!user || user.role !== 'partner' || !user.partnerId) {
+    throw new AppError('Accès partenaire non autorisé', 403);
+  }
+  const filters: PartnerDashboardFilters = {
+    groupBy: (req.query.groupBy as 'day' | 'month') || 'month',
+    from: req.query.from as string | undefined,
+    to: req.query.to as string | undefined
+  };
+  const stats = await getPartnerDashboardStats(user.partnerId, filters);
+  sendSuccess(res, stats);
 });
 
 /**

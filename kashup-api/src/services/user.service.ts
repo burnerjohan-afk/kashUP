@@ -13,6 +13,7 @@ export const getCurrentUser = async (userId: string) => {
       firstName: true,
       lastName: true,
       role: true,
+      partnerId: true,
       createdAt: true,
       wallet: true
     }

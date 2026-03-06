@@ -1,4 +1,6 @@
 import apiClient from './apiClient';
+import { apiClient as apiClientAuth, getAuthToken, refreshToken } from './api';
+import { ApiError, unwrapStandardResponse } from '../types/api';
 
 /**
  * Endpoints utilisés :
@@ -57,12 +59,16 @@ export type GiftCardOffer = {
   id: string;
   title: string;
   description: string;
+  /** Offre partenaire (ex. "Massage 1h") – Carte UP */
+  offre?: string | null;
   partner: {
     id: string;
     name: string;
     logoUrl?: string | null;
   } | null;
   price: number;
+  /** Taux de cashback (%) à l'achat – affiché dans l'app */
+  cashbackRate?: number | null;
   accentColor?: string | null;
   imageUrl?: string | null;
 };
@@ -101,6 +107,8 @@ export type GiftBox = {
   heroImageUrl?: string | null;
   imageUrl?: string | null;
   cashbackInfo?: string | null;
+  /** Taux de cashback (%) à l'achat – affiché dans l'app */
+  cashbackRate?: number | null;
   commentCaMarche?: string | null;
   status?: 'active' | 'inactive';
   partners: GiftBoxPartner[];
@@ -118,6 +126,8 @@ export type CarteUpLibre = {
   partenairesEligibles: string[];
   conditions?: string;
   commentCaMarche?: string;
+  /** Taux de cashback (%) à l'achat – affiché dans l'app */
+  cashbackRate?: number | null;
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
@@ -144,6 +154,114 @@ export const purchaseGiftCard = async (payload: PurchaseGiftCardPayload): Promis
   const { data } = await apiClient.post<GiftCardPurchase>('/gift-cards/purchase', payload);
   return data;
 };
+
+/** Envoi d'une offre prédefinie à un utilisateur (notification in-app). L'e-mail doit être celui d'un compte KashUP. */
+export type SendPredefinedGiftPayload = {
+  offerId: string;
+  beneficiaryEmail: string;
+  message?: string;
+};
+
+/** Vérifie qu'un token est disponible (tente un refresh si besoin). Même chemin que auth. */
+async function ensureAuthToken(): Promise<void> {
+  let token = await getAuthToken();
+  if (!token?.trim()) {
+    try {
+      await refreshToken();
+      token = await getAuthToken();
+    } catch {
+      // refresh a échoué, on laisse l'appel partir ; le backend renverra 401
+    }
+  }
+  if (!token?.trim()) {
+    throw new ApiError('Session expirée. Veuillez vous reconnecter.', 401);
+  }
+}
+
+export const sendPredefinedGift = async (payload: SendPredefinedGiftPayload): Promise<{ success: boolean; message: string }> => {
+  await ensureAuthToken();
+  const response = await apiClientAuth<{ success: boolean; message: string }>('POST', '/gift-cards/send-predefined', payload);
+  return unwrapStandardResponse(response) as { success: boolean; message: string };
+};
+
+/** Envoi d'une Box UP à un utilisateur (notification in-app). */
+export type SendBoxUpPayload = {
+  boxId: string;
+  beneficiaryEmail: string;
+  message?: string;
+};
+
+export const sendBoxUp = async (payload: SendBoxUpPayload): Promise<{ success: boolean; message: string }> => {
+  await ensureAuthToken();
+  const response = await apiClientAuth<{ success: boolean; message: string }>('POST', '/gift-cards/send-box', payload);
+  return unwrapStandardResponse(response) as { success: boolean; message: string };
+};
+
+/** Carte Sélection UP : montant libre (pas de catalogue). Envoi par email (PDF) ou notification app. */
+export type SendSelectionUpPayload = {
+  amount: number;
+  beneficiaryEmail: string;
+  message?: string;
+  partnerId?: string;
+  partnerName?: string;
+};
+
+export const sendSelectionUp = async (payload: SendSelectionUpPayload): Promise<{ success: boolean; message: string }> => {
+  await ensureAuthToken();
+  const response = await apiClientAuth<{ success: boolean; message: string }>('POST', '/gift-cards/send-selection', payload);
+  return unwrapStandardResponse(response) as { success: boolean; message: string };
+};
+
+// ——— Paiement par carte (Apple Pay / Google Pay via Stripe) ———
+
+export type CreatePaymentIntentForGiftPayload =
+  | { giftType: 'carte_up'; offerId: string; beneficiaryEmail: string; message?: string }
+  | {
+      giftType: 'selection_up';
+      amount: number;
+      beneficiaryEmail: string;
+      message?: string;
+      partnerId?: string;
+      partnerName?: string;
+    }
+  | { giftType: 'box_up'; boxId: string; beneficiaryEmail: string; message?: string };
+
+export type ConfirmCardPaymentForGiftPayload =
+  | { paymentIntentId: string; giftType: 'carte_up'; offerId: string; beneficiaryEmail: string; message?: string }
+  | {
+      paymentIntentId: string;
+      giftType: 'selection_up';
+      amount: number;
+      beneficiaryEmail: string;
+      message?: string;
+      partnerId?: string;
+      partnerName?: string;
+    }
+  | { paymentIntentId: string; giftType: 'box_up'; boxId: string; beneficiaryEmail: string; message?: string };
+
+export async function createGiftCardPaymentIntent(
+  payload: CreatePaymentIntentForGiftPayload
+): Promise<{ clientSecret: string; paymentIntentId: string }> {
+  await ensureAuthToken();
+  const response = await apiClientAuth<{ clientSecret: string; paymentIntentId: string }>(
+    'POST',
+    '/gift-cards/create-payment-intent',
+    payload
+  );
+  return unwrapStandardResponse(response) as { clientSecret: string; paymentIntentId: string };
+}
+
+export async function confirmCardPaymentForGift(
+  payload: ConfirmCardPaymentForGiftPayload
+): Promise<{ success: boolean; message: string }> {
+  await ensureAuthToken();
+  const response = await apiClientAuth<{ success: boolean; message: string }>(
+    'POST',
+    '/gift-cards/confirm-card-payment',
+    payload
+  );
+  return unwrapStandardResponse(response) as { success: boolean; message: string };
+}
 
 export const getGiftCardOffers = async (): Promise<GiftCardOffer[]> => {
   const { data } = await apiClient.get<GiftCardOffer[]>('/gift-cards/offers');

@@ -19,7 +19,7 @@ import { authMiddleware, requireRoles } from '../middlewares/auth';
 import { validateBody, validateQuery } from '../middlewares/validator';
 import { categorySchema, createPartnerSchema, partnerFiltersSchema, updatePartnerSchema } from '../schemas/partner.schema';
 import { USER_ROLE } from '../types/domain';
-import { uploadDocumentSingle, uploadFields, uploadLogo } from '../config/upload';
+import { uploadDocumentSingle, uploadFields } from '../config/upload';
 import logger from '../utils/logger';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
@@ -316,6 +316,15 @@ router.post(
   })
 );
 
+const partnerUploadFields = [
+  { name: 'logo', maxCount: 1 },
+  { name: 'kbis', maxCount: 1 },
+  { name: 'menuImages', maxCount: 10 },
+  { name: 'photos', maxCount: 10 },
+  { name: 'giftCardImage', maxCount: 1 },
+  { name: 'giftCardVirtualCardImage', maxCount: 1 },
+];
+
 router.post(
   '/',
   (req, res, next) => {
@@ -332,13 +341,13 @@ router.post(
     logger.info('✅ Middleware requireRoles - réussi');
     next();
   },
-  uploadLogo(),
+  uploadFields(partnerUploadFields),
   (req, res, next) => {
-    logger.info({ 
-      hasFile: !!req.file,
-      fileField: req.file?.fieldname,
-      fileMimetype: req.file?.mimetype,
-      bodyKeys: Object.keys(req.body || {})
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    logger.info({
+      hasFiles: !!req.files,
+      fields: files ? Object.keys(files) : [],
+      bodyKeys: Object.keys(req.body || {}),
     }, '✅ Middleware multer - réussi');
     next();
   },
@@ -350,12 +359,7 @@ router.patch(
   '/:id',
   authMiddleware,
   requireRoles(USER_ROLE.admin, USER_ROLE.partner),
-  uploadFields([
-    { name: 'logo', maxCount: 1 },
-    { name: 'kbis', maxCount: 1 },
-    { name: 'menuImages', maxCount: 10 },
-    { name: 'photos', maxCount: 10 }
-  ]),
+  uploadFields(partnerUploadFields),
   // Note: La validation est faite dans le handler après conversion des types
   updatePartnerHandler
 );

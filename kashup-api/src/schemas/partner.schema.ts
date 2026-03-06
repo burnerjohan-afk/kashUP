@@ -110,6 +110,24 @@ export const basePartnerSchema = z.object({
   websiteUrl: optionalUrl,
   facebookUrl: optionalUrl,
   instagramUrl: optionalUrl,
+  // Adresses et réseaux par département : { "Martinique": { address, websiteUrl, facebookUrl, instagramUrl }, ... }
+  territoryDetails: z.union([
+    z.record(z.string(), z.object({
+      address: z.string().optional(),
+      websiteUrl: optionalUrl,
+      facebookUrl: optionalUrl,
+      instagramUrl: optionalUrl,
+    }).passthrough()),
+    z.string().transform((val) => {
+      if (!val || val.trim() === '') return undefined;
+      try {
+        const parsed = JSON.parse(val);
+        return typeof parsed === 'object' && parsed !== null ? parsed : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
+  ]).optional().or(z.literal('').transform(() => undefined)),
   tauxCashbackBase: z.coerce.number().min(0).max(100).default(0), // z.coerce pour convertir depuis string, défaut à 0
   discoveryCashbackRate: z.coerce.number().min(0).max(100).optional().or(z.literal('').transform(() => undefined)), // Taux de cashback de bienvenue
   permanentCashbackRate: z.coerce.number().min(0).max(100).optional().or(z.literal('').transform(() => undefined)), // Taux de cashback permanent
@@ -132,6 +150,7 @@ export const basePartnerSchema = z.object({
   latitude: z.coerce.number().optional().or(z.literal('').transform(() => undefined)), // z.coerce pour convertir depuis string
   longitude: z.coerce.number().optional().or(z.literal('').transform(() => undefined)), // z.coerce pour convertir depuis string
   boostable: z.coerce.boolean().optional().default(true), // z.coerce pour convertir depuis string
+  giftCardEnabled: z.coerce.boolean().optional().default(false), // Activer cartes cadeaux / bons d'achat
   categoryId: z.string().cuid('categoryId invalide'),
   status: z.string().optional().or(z.literal('').transform(() => undefined)), // Statut du partenaire (active, inactive, pending, etc.)
   additionalInfo: z.union([

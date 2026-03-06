@@ -1,9 +1,18 @@
 import { addMonths } from 'date-fns';
 import { nanoid } from 'nanoid';
 import prisma from '../config/prisma';
-import { PurchaseGiftCardInput, GiftCardConfigInput, BoxUpConfigInput } from '../schemas/giftCard.schema';
+import {
+  PurchaseGiftCardInput,
+  GiftCardConfigInput,
+  BoxUpConfigInput,
+  SendPredefinedGiftInput,
+  SendBoxUpInput,
+  SendSelectionUpInput,
+  CreatePaymentIntentForGiftInput,
+} from '../schemas/giftCard.schema';
 import { AppError } from '../utils/errors';
 import { emitBoxUpConfigWebhook, emitGiftCardConfigWebhook } from './webhook.service';
+import { createNotification } from './notification.service';
 import { buildListMeta, buildListQuery, ListParams } from '../utils/listing';
 
 export const listGiftCardAmounts = async () => {
@@ -70,8 +79,12 @@ export type GiftOfferForApp = {
   id: string;
   title: string;
   description: string;
+  /** Offre partenaire (ex. "Massage 1h") – Carte UP uniquement */
+  offre?: string | null;
   partner: { id: string; name: string; logoUrl?: string | null } | null;
   price: number;
+  /** Taux de cashback (%) à l'achat – affiché dans l'app */
+  cashbackRate?: number | null;
   accentColor?: string | null;
   imageUrl?: string | null;
 };
@@ -95,14 +108,17 @@ export const listGiftCardOffersForApp = async (): Promise<GiftOfferForApp[]> => 
     description: g.subtitle ?? '',
     partner: null,
     price: g.amount,
+    cashbackRate: null,
     imageUrl: g.imageUrl ?? undefined,
   }));
   const fromCartesUp: GiftOfferForApp[] = cartesUp.map((c) => ({
     id: c.id,
     title: c.nom,
     description: c.description ?? '',
+    offre: c.offre ?? undefined,
     partner: c.partner ? { id: c.partner.id, name: c.partner.name, logoUrl: c.partner.logoUrl } : null,
     price: c.montant,
+    cashbackRate: c.cashbackRate != null ? c.cashbackRate : null,
     imageUrl: c.imageUrl ?? undefined,
   }));
   return [...fromPredefined, ...fromCartesUp];
@@ -210,7 +226,351 @@ export const purchaseGiftCard = async (userId: string, input: PurchaseGiftCardIn
     return purchaseRecord;
   });
 
+  // Si le destinataire a un compte KashUP, lui envoyer une notification in-app
+  const beneficiaryUser = await prisma.user.findUnique({
+    where: { email: input.beneficiaryEmail.trim().toLowerCase() },
+  });
+  if (beneficiaryUser && beneficiaryUser.id !== userId) {
+    const giftName = giftCard.partner?.name ?? giftCard.name;
+    await createNotification(beneficiaryUser.id, {
+      title: 'Vous avez reçu un cadeau',
+      body: input.message
+        ? `${giftName} — ${input.message.substring(0, 80)}${input.message.length > 80 ? '…' : ''}`
+        : `Carte cadeau ${giftName} (${amount} €)`,
+      category: 'gifts',
+      metadata: { purchaseId: purchase.id, giftCardId: giftCard.id },
+    });
+  }
+
   return purchase;
+};
+
+/** Envoi d'une offre prédefinie (Carte UP / PredefinedGift) à un utilisateur : débit wallet, enregistrement, notification in-app. */
+export const sendPredefinedGift = async (senderId: string, input: SendPredefinedGiftInput) => {
+  const [predefined, carteUp] = await Promise.all([
+    prisma.predefinedGift.findFirst({ where: { id: input.offerId, active: true, deletedAt: null } }),
+    prisma.carteUpPredefinie.findFirst({ where: { id: input.offerId, status: 'active' }, include: { partner: { select: { name: true } } } }),
+  ]);
+  const offer = predefined ?? carteUp;
+  if (!offer) {
+    throw new AppError('Offre introuvable ou inactive', 404);
+  }
+  const amount = predefined ? predefined.amount : (offer as { montant: number }).montant;
+  const title = predefined ? predefined.title : (offer as { nom: string }).nom;
+
+  const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
+  if (!beneficiary) {
+    throw new AppError('Aucun utilisateur KashUP avec cet e-mail. Le destinataire doit avoir un compte.', 400);
+  }
+  if (beneficiary.id === senderId) {
+    throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
+  }
+
+  const wallet = await prisma.wallet.findUnique({ where: { userId: senderId } });
+  if (!wallet) {
+    throw new AppError('Wallet introuvable', 404);
+  }
+  if (wallet.soldeCashback < amount) {
+    throw new AppError('Solde cashback insuffisant', 400);
+  }
+
+  const offerType = predefined ? 'predefined' : 'carte_up';
+
+  await prisma.$transaction(async (tx) => {
+    await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { soldeCashback: { decrement: amount } },
+    });
+    await tx.predefinedGiftSend.create({
+      data: {
+        offerId: input.offerId,
+        offerType,
+        senderId,
+        beneficiaryUserId: beneficiary.id,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        offerTitle: title,
+      },
+    });
+  });
+
+  await createNotification(beneficiary.id, {
+    title: 'Vous avez reçu un cadeau',
+    body: input.message?.trim() ? `${title} — ${input.message.trim()}` : title,
+    category: 'gifts',
+    metadata: { offerId: input.offerId, offerType, senderId },
+  });
+
+  return { success: true, message: 'Cadeau envoyé. Le destinataire a été notifié dans l\'app.' };
+};
+
+/** Envoi d'une Box UP à un utilisateur : débit wallet, enregistrement PredefinedGiftSend (offerType box_up), notification in-app. */
+export const sendBoxUp = async (senderId: string, input: SendBoxUpInput) => {
+  const box = await prisma.giftBox.findFirst({
+    where: { id: input.boxId, active: true },
+  });
+  if (!box) {
+    throw new AppError('Box introuvable ou inactive', 404);
+  }
+  const amount = box.value ?? 0;
+  if (amount <= 0) {
+    throw new AppError('Cette Box n\'a pas de montant défini', 400);
+  }
+
+  const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
+  if (!beneficiary) {
+    throw new AppError('Aucun utilisateur KashUP avec cet e-mail. Le destinataire doit avoir un compte.', 400);
+  }
+  if (beneficiary.id === senderId) {
+    throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
+  }
+
+  const wallet = await prisma.wallet.findUnique({ where: { userId: senderId } });
+  if (!wallet) {
+    throw new AppError('Wallet introuvable', 404);
+  }
+  if (wallet.soldeCashback < amount) {
+    throw new AppError('Solde cashback insuffisant', 400);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { soldeCashback: { decrement: amount } },
+    });
+    await tx.predefinedGiftSend.create({
+      data: {
+        offerId: input.boxId,
+        offerType: 'box_up',
+        senderId,
+        beneficiaryUserId: beneficiary.id,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        offerTitle: box.name,
+      },
+    });
+  });
+
+  await createNotification(beneficiary.id, {
+    title: 'Vous avez reçu une Box UP',
+    body: input.message?.trim() ? `${box.name} — ${input.message.trim()}` : box.name,
+    category: 'gifts',
+    metadata: { boxId: input.boxId, senderId },
+  });
+
+  return { success: true, message: 'Box UP envoyée. Le destinataire a été notifié dans l\'app.' };
+};
+
+/** Carte Sélection UP : montant libre (pas de catalogue). Débite le wallet, crée l'envoi. Si le destinataire a un compte KashUP, notification in-app. */
+export const sendSelectionUp = async (senderId: string, input: SendSelectionUpInput) => {
+  const amount = input.amount;
+  const wallet = await prisma.wallet.findUnique({ where: { userId: senderId } });
+  if (!wallet) {
+    throw new AppError('Wallet introuvable', 404);
+  }
+  if (wallet.soldeCashback < amount) {
+    throw new AppError('Solde cashback insuffisant', 400);
+  }
+
+  const email = input.beneficiaryEmail.trim().toLowerCase();
+  const beneficiary = await prisma.user.findUnique({ where: { email } });
+  if (beneficiary?.id === senderId) {
+    throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
+  }
+
+  const offerTitle = input.partnerName?.trim() ? `Carte Sélection UP — ${input.partnerName}` : 'Carte Sélection UP';
+
+  await prisma.$transaction(async (tx) => {
+    await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { soldeCashback: { decrement: amount } },
+    });
+    await tx.predefinedGiftSend.create({
+      data: {
+        offerId: input.partnerId ?? '',
+        offerType: 'selection_up',
+        senderId,
+        beneficiaryUserId: beneficiary?.id ?? null,
+        beneficiaryEmail: email,
+        message: input.message ?? null,
+        amount,
+        offerTitle,
+      },
+    });
+  });
+
+  if (beneficiary) {
+    await createNotification(beneficiary.id, {
+      title: 'Vous avez reçu une Carte Sélection UP',
+      body: input.message?.trim() ? `${offerTitle} — ${input.message.trim()}` : `${offerTitle} (${amount} €)`,
+      category: 'gifts',
+      metadata: { amount, senderId, partnerId: input.partnerId },
+    });
+  }
+
+  return {
+    success: true,
+    message: beneficiary
+      ? 'Carte envoyée. Le destinataire a été notifié dans l\'app.'
+      : 'Carte envoyée. Le destinataire recevra les détails par e-mail.',
+  };
+};
+
+// ——— Paiement par carte (Stripe Apple Pay / Google Pay) : même logique métier sans débit wallet ———
+
+/** Retourne le montant en euros pour un paiement carte selon le type de cadeau (pour créer le PaymentIntent). */
+export const getAmountEurosForGiftPayment = async (input: CreatePaymentIntentForGiftInput): Promise<number> => {
+  if (input.giftType === 'carte_up') {
+    const [predefined, carteUp] = await Promise.all([
+      prisma.predefinedGift.findFirst({ where: { id: input.offerId, active: true, deletedAt: null } }),
+      prisma.carteUpPredefinie.findFirst({ where: { id: input.offerId, status: 'active' } }),
+    ]);
+    const offer = predefined ?? carteUp;
+    if (!offer) throw new AppError('Offre introuvable ou inactive', 404);
+    return predefined ? predefined.amount : (offer as { montant: number }).montant;
+  }
+  if (input.giftType === 'box_up') {
+    const box = await prisma.giftBox.findFirst({ where: { id: input.boxId, active: true } });
+    if (!box) throw new AppError('Box introuvable ou inactive', 404);
+    const value = box.value ?? 0;
+    if (value <= 0) throw new AppError('Cette Box n\'a pas de montant défini', 400);
+    return value;
+  }
+  // selection_up
+  return input.amount;
+};
+
+/** Envoi Carte UP / PredefinedGift payé par carte (pas de débit cashback). */
+export const sendPredefinedGiftWithCard = async (senderId: string, input: SendPredefinedGiftInput) => {
+  const [predefined, carteUp] = await Promise.all([
+    prisma.predefinedGift.findFirst({ where: { id: input.offerId, active: true, deletedAt: null } }),
+    prisma.carteUpPredefinie.findFirst({ where: { id: input.offerId, status: 'active' }, include: { partner: { select: { name: true } } } }),
+  ]);
+  const offer = predefined ?? carteUp;
+  if (!offer) {
+    throw new AppError('Offre introuvable ou inactive', 404);
+  }
+  const amount = predefined ? predefined.amount : (offer as { montant: number }).montant;
+  const title = predefined ? predefined.title : (offer as { nom: string }).nom;
+
+  const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
+  if (!beneficiary) {
+    throw new AppError('Aucun utilisateur KashUP avec cet e-mail. Le destinataire doit avoir un compte.', 400);
+  }
+  if (beneficiary.id === senderId) {
+    throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
+  }
+
+  const offerType = predefined ? 'predefined' : 'carte_up';
+
+  await prisma.predefinedGiftSend.create({
+    data: {
+      offerId: input.offerId,
+      offerType,
+      senderId,
+      beneficiaryUserId: beneficiary.id,
+      beneficiaryEmail: beneficiary.email,
+      message: input.message ?? null,
+      amount,
+      offerTitle: title,
+    },
+  });
+
+  await createNotification(beneficiary.id, {
+    title: 'Vous avez reçu un cadeau',
+    body: input.message?.trim() ? `${title} — ${input.message.trim()}` : title,
+    category: 'gifts',
+    metadata: { offerId: input.offerId, offerType, senderId },
+  });
+
+  return { success: true, message: 'Cadeau envoyé. Le destinataire a été notifié dans l\'app.' };
+};
+
+/** Envoi Box UP payé par carte (pas de débit cashback). */
+export const sendBoxUpWithCard = async (senderId: string, input: SendBoxUpInput) => {
+  const box = await prisma.giftBox.findFirst({
+    where: { id: input.boxId, active: true },
+  });
+  if (!box) {
+    throw new AppError('Box introuvable ou inactive', 404);
+  }
+  const amount = box.value ?? 0;
+  if (amount <= 0) {
+    throw new AppError('Cette Box n\'a pas de montant défini', 400);
+  }
+
+  const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
+  if (!beneficiary) {
+    throw new AppError('Aucun utilisateur KashUP avec cet e-mail. Le destinataire doit avoir un compte.', 400);
+  }
+  if (beneficiary.id === senderId) {
+    throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
+  }
+
+  await prisma.predefinedGiftSend.create({
+    data: {
+      offerId: input.boxId,
+      offerType: 'box_up',
+      senderId,
+      beneficiaryUserId: beneficiary.id,
+      beneficiaryEmail: beneficiary.email,
+      message: input.message ?? null,
+      amount,
+      offerTitle: box.name,
+    },
+  });
+
+  await createNotification(beneficiary.id, {
+    title: 'Vous avez reçu une Box UP',
+    body: input.message?.trim() ? `${box.name} — ${input.message.trim()}` : box.name,
+    category: 'gifts',
+    metadata: { boxId: input.boxId, senderId },
+  });
+
+  return { success: true, message: 'Box UP envoyée. Le destinataire a été notifié dans l\'app.' };
+};
+
+/** Envoi Carte Sélection UP payé par carte (pas de débit cashback). */
+export const sendSelectionUpWithCard = async (senderId: string, input: SendSelectionUpInput) => {
+  const amount = input.amount;
+  const email = input.beneficiaryEmail.trim().toLowerCase();
+  const beneficiary = await prisma.user.findUnique({ where: { email } });
+  if (beneficiary?.id === senderId) {
+    throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
+  }
+
+  const offerTitle = input.partnerName?.trim() ? `Carte Sélection UP — ${input.partnerName}` : 'Carte Sélection UP';
+
+  await prisma.predefinedGiftSend.create({
+    data: {
+      offerId: input.partnerId ?? '',
+      offerType: 'selection_up',
+      senderId,
+      beneficiaryUserId: beneficiary?.id ?? null,
+      beneficiaryEmail: email,
+      message: input.message ?? null,
+      amount,
+      offerTitle,
+    },
+  });
+
+  if (beneficiary) {
+    await createNotification(beneficiary.id, {
+      title: 'Vous avez reçu une Carte Sélection UP',
+      body: input.message?.trim() ? `${offerTitle} — ${input.message.trim()}` : `${offerTitle} (${amount} €)`,
+      category: 'gifts',
+      metadata: { amount, senderId, partnerId: input.partnerId },
+    });
+  }
+
+  return {
+    success: true,
+    message: beneficiary
+      ? 'Carte envoyée. Le destinataire a été notifié dans l\'app.'
+      : 'Carte envoyée. Le destinataire recevra les détails par e-mail.',
+  };
 };
 
 // Services pour l'admin
@@ -386,13 +746,14 @@ export const createOrUpdateBoxUpConfig = async (input: BoxUpConfigInput, imageUr
   }
 };
 
-/** Format admin BoxUp (nom, partenaires, commentCaMarche, status) depuis le modèle GiftBox */
+/** Format admin BoxUp (nom, partenaires, commentCaMarche, cashbackRate, status) depuis le modèle GiftBox */
 export const mapGiftBoxToBoxUp = (box: {
   id: string;
   name: string;
   description: string;
   imageUrl: string | null;
   cashbackInfo: string | null;
+  cashbackRate: number | null;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -414,6 +775,7 @@ export const mapGiftBoxToBoxUp = (box: {
     conditions: item.description ?? undefined,
   })),
   commentCaMarche: box.cashbackInfo ?? undefined,
+  cashbackRate: box.cashbackRate ?? undefined,
   status: box.active ? ('active' as const) : ('inactive' as const),
   createdAt: box.createdAt.toISOString(),
   updatedAt: box.updatedAt.toISOString(),
@@ -426,6 +788,7 @@ export type CreateBoxUpPayload = {
   imageUrl?: string;
   partenaires: string; // JSON string Array<{ partenaireId, offrePartenaire, conditions? }>
   commentCaMarche?: string;
+  cashbackRate?: number | null;
   status: 'active' | 'inactive';
 };
 
@@ -447,6 +810,7 @@ export const createGiftBoxAdmin = async (payload: CreateBoxUpPayload) => {
       imageUrl: payload.imageUrl ?? null,
       cashbackInfo: payload.commentCaMarche ?? null,
       value: 0,
+      cashbackRate: payload.cashbackRate ?? null,
       active,
       items: {
         create: partenaires.map((p) => ({
@@ -474,6 +838,7 @@ export type UpdateBoxUpPayload = Partial<{
   imageUrl: string;
   partenaires: string;
   commentCaMarche: string;
+  cashbackRate: number | null;
   status: 'active' | 'inactive';
 }>;
 
@@ -495,6 +860,7 @@ export const updateGiftBoxAdmin = async (id: string, payload: UpdateBoxUpPayload
   if (payload.description !== undefined) data.description = payload.description;
   if (payload.imageUrl !== undefined) data.imageUrl = payload.imageUrl;
   if (payload.commentCaMarche !== undefined) data.cashbackInfo = payload.commentCaMarche;
+  if (payload.cashbackRate !== undefined) data.cashbackRate = payload.cashbackRate;
   if (payload.status !== undefined) data.active = payload.status === 'active';
 
   if (partenaires !== undefined) {
@@ -589,6 +955,7 @@ function mapCarteUpLibreConfigToResponse(row: {
   partenairesEligibles: string;
   conditions: string | null;
   commentCaMarche: string | null;
+  cashbackRate: number | null;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -614,6 +981,7 @@ function mapCarteUpLibreConfigToResponse(row: {
     partenairesEligibles: partenaires,
     conditions: row.conditions ?? undefined,
     commentCaMarche: row.commentCaMarche ?? undefined,
+    cashbackRate: row.cashbackRate ?? undefined,
     status: row.status as 'active' | 'inactive',
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -650,6 +1018,7 @@ export const createCarteUpLibreConfig = async (payload: {
   partenairesEligibles: string;
   conditions?: string;
   commentCaMarche?: string;
+  cashbackRate?: number | null;
   status: string;
 }) => {
   const row = await prisma.carteUpLibreConfig.create({
@@ -661,6 +1030,7 @@ export const createCarteUpLibreConfig = async (payload: {
       partenairesEligibles: payload.partenairesEligibles || '[]',
       conditions: payload.conditions ?? null,
       commentCaMarche: payload.commentCaMarche ?? null,
+      cashbackRate: payload.cashbackRate ?? null,
       status: payload.status || 'active',
     },
   });
@@ -677,6 +1047,7 @@ export const updateCarteUpLibreConfig = async (
     partenairesEligibles: string;
     conditions: string;
     commentCaMarche: string;
+    cashbackRate: number | null;
     status: string;
   }>
 ) => {
@@ -692,6 +1063,7 @@ export const updateCarteUpLibreConfig = async (
       ...(payload.partenairesEligibles !== undefined && { partenairesEligibles: payload.partenairesEligibles }),
       ...(payload.conditions !== undefined && { conditions: payload.conditions }),
       ...(payload.commentCaMarche !== undefined && { commentCaMarche: payload.commentCaMarche }),
+      ...(payload.cashbackRate !== undefined && { cashbackRate: payload.cashbackRate }),
       ...(payload.status !== undefined && { status: payload.status }),
     },
   });
@@ -717,6 +1089,7 @@ function mapCarteUpPredefinieToResponse(row: {
   dureeValiditeJours: number | null;
   conditions: string | null;
   commentCaMarche: string | null;
+  cashbackRate: number | null;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -734,6 +1107,7 @@ function mapCarteUpPredefinieToResponse(row: {
     dureeValiditeJours: row.dureeValiditeJours ?? undefined,
     conditions: row.conditions ?? undefined,
     commentCaMarche: row.commentCaMarche ?? undefined,
+    cashbackRate: row.cashbackRate ?? undefined,
     status: row.status as 'active' | 'inactive',
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -767,6 +1141,7 @@ export const createCarteUpPredefinie = async (payload: {
   dureeValiditeJours?: number;
   conditions?: string;
   commentCaMarche?: string;
+  cashbackRate?: number | null;
   status: string;
 }) => {
   const row = await prisma.carteUpPredefinie.create({
@@ -780,6 +1155,7 @@ export const createCarteUpPredefinie = async (payload: {
       dureeValiditeJours: payload.dureeValiditeJours ?? null,
       conditions: payload.conditions ?? null,
       commentCaMarche: payload.commentCaMarche ?? null,
+      cashbackRate: payload.cashbackRate ?? null,
       status: payload.status || 'active',
     },
     include: { partner: { select: { name: true } } },
@@ -799,6 +1175,7 @@ export const updateCarteUpPredefinie = async (
     dureeValiditeJours: number;
     conditions: string;
     commentCaMarche: string;
+    cashbackRate: number | null;
     status: string;
   }>
 ) => {
@@ -816,6 +1193,7 @@ export const updateCarteUpPredefinie = async (
       ...(payload.dureeValiditeJours !== undefined && { dureeValiditeJours: payload.dureeValiditeJours }),
       ...(payload.conditions !== undefined && { conditions: payload.conditions }),
       ...(payload.commentCaMarche !== undefined && { commentCaMarche: payload.commentCaMarche }),
+      ...(payload.cashbackRate !== undefined && { cashbackRate: payload.cashbackRate }),
       ...(payload.status !== undefined && { status: payload.status }),
     },
     include: { partner: { select: { name: true } } },

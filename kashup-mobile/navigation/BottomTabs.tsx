@@ -5,17 +5,25 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import HomeStack from './HomeStack';
-import PartnersScreen from '../screens/PartnersScreen';
+import PartnersStack from './PartnersStack';
 import CagnotteStack from './CagnotteStack';
 import GiftCardsScreen from '../screens/GiftCardsScreen';
 import RewardsStack from './RewardsStack';
 import { radius, spacing } from '../constants/theme';
 
 const TAB_BAR_ICON = '#3C3C3C';
+const TAB_BAR_ACTIVE = '#047857';
 
 export type BottomTabParamList = {
   Accueil: undefined;
-  Partenaires: { initialSearch?: string; openNearby?: boolean; nearbyRadiusKm?: number } | undefined;
+  Partenaires:
+    | {
+        initialSearch?: string;
+        openNearby?: boolean;
+        nearbyRadiusKm?: number;
+        screen?: 'OffresDuMoment';
+      }
+    | undefined;
   Cagnotte: undefined;
   "Bons d'achat": undefined;
   Rewards:
@@ -72,10 +80,10 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                   <Ionicons
                     name={iconName as any}
                     size={24}
-                    color={TAB_BAR_ICON}
+                    color={isFocused ? TAB_BAR_ACTIVE : TAB_BAR_ICON}
                   />
                   <Text
-                    style={styles.tabLabel}
+                    style={[styles.tabLabel, isFocused && styles.tabLabelActive]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     textAlign="center">
@@ -100,7 +108,11 @@ export default function BottomTabs() {
         tabBarHideOnKeyboard: true,
       }}>
       <Tab.Screen name="Accueil" component={HomeStack} options={{ title: 'Accueil' }} />
-      <Tab.Screen name="Partenaires" component={PartnersScreen} options={{ title: 'Partenaires' }} />
+      <Tab.Screen
+        name="Partenaires"
+        component={PartnersStack}
+        options={{ title: 'Partenaires', unmountOnBlur: true }}
+      />
       <Tab.Screen name="Cagnotte" component={CagnotteStack} options={{ title: 'Cagnotte' }} />
       <Tab.Screen
         name="Bons d'achat"
@@ -113,7 +125,7 @@ export default function BottomTabs() {
 }
 
 const PILL_BG = 'rgba(255,255,255,0.92)';
-const TAB_PILL_ACTIVE = 'rgba(0,0,0,0.08)';
+const TAB_PILL_ACTIVE = 'transparent';
 
 const styles = StyleSheet.create({
   container: {
@@ -172,5 +184,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: TAB_BAR_ICON,
     textAlign: 'center',
+  },
+  tabLabelActive: {
+    color: TAB_BAR_ACTIVE,
   },
 });

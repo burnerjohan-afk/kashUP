@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp, useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,17 +23,20 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCurrentOffers } from '@/src/hooks/useCurrentOffers';
 import { usePartners } from '@/src/hooks/usePartners';
 import { useRewards } from '@/src/hooks/useRewards';
 import { useWallet } from '@/src/hooks/useWallet';
 import type { PartnerFilters } from '@/src/services/partnerService';
+import type { Offer } from '@/src/services/offers';
+import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import type { PartnerViewModel } from '@/src/utils/partnerAdapter';
 import { adaptPartnerFromApi } from '@/src/utils/partnerAdapter';
 import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
 import { useNotifications } from '../context/NotificationsContext';
 import { getCategoryAccent } from '../constants/categoryAccents';
 import { getCategoryIcon } from '../constants/categoryIcons';
-import { colors, radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import { BottomTabParamList } from '../navigation/BottomTabs';
 import { MainStackParamList } from '../navigation/MainStack';
 
@@ -112,6 +116,7 @@ const DEFAULT_RADIUS_KM = 10;
 /** ID utilisé pour "Tous" les partenaires (pas de filtre catégorie) */
 const ALL_CATEGORIES_ID = 'all';
 const RADIUS_OPTIONS = [1, 5, 10, 25];
+const PARTNERS_OFFER_CARD_WIDTH = 280;
 const REFERENCE_POINT = { latitude: 14.616, longitude: -61.058 };
 
 const toRad = (value: number) => (value * Math.PI) / 180;
@@ -162,10 +167,10 @@ export default function PartnersScreen() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleNotificationPress = useCallback(() => {
-    (navigation.getParent() as any)?.navigate('Accueil', { screen: 'Notifications' });
+    (navigation as any).navigate('Accueil', { screen: 'Notifications' });
   }, [navigation]);
   const handleProfilePress = useCallback(() => {
-    (navigation.getParent() as any)?.navigate('Accueil', { screen: 'Profile' });
+    (navigation as any).navigate('Accueil', { screen: 'Profile' });
   }, [navigation]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -209,6 +214,7 @@ export default function PartnersScreen() {
     error: partnersError,
     refetch,
   } = usePartners(partnerFilters);
+  const { data: currentOffers } = useCurrentOffers();
   const { data: walletData } = useWallet();
   const { data: rewardsData } = useRewards();
   const cashback = walletData?.wallet?.soldeCashback ?? null;
@@ -292,7 +298,12 @@ export default function PartnersScreen() {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     return partners.filter((partner) => {
       if (selectedCategoryId && selectedCategoryId !== ALL_CATEGORIES_ID && partner.categoryId !== selectedCategoryId) return false;
-      if (territoryFilter && partner.country !== territoryFilter) return false;
+      if (territoryFilter) {
+        const inTerritory = partner.territories?.length
+          ? partner.territories.includes(territoryFilter)
+          : partner.country === territoryFilter;
+        if (!inTerritory) return false;
+      }
       if (nearbyMode) {
         const distance = partnerDistanceMap.get(partner.id) ?? Infinity;
         if (distance > nearbyRadius) return false;
@@ -351,6 +362,10 @@ export default function PartnersScreen() {
     navigation.navigate('PartnerDetail', { partnerId });
   };
 
+  const handleSeeAllOffersPress = () => {
+    (navigation as any).navigate('OffresDuMoment');
+  };
+
   const handleOfferPress = (partnerId: string, offerType: 'welcome' | 'permanent' | 'voucher') => {
     navigation.navigate('OfferTemplate', { partnerId, offerType });
   };
@@ -405,6 +420,108 @@ export default function PartnersScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Partenaires</Text>
             <Text style={styles.subtitle}>Découvrez les commerces qui boostent votre pouvoir d'achat local.</Text>
+
+            {/* Carousel Offres du moment — sous le titre */}
+            {currentOffers.length > 0 && (
+              <View style={styles.offresSection}>
+                <View style={styles.offresSectionHeader}>
+                  <Text style={styles.offresSectionTitle}>Offres du moment</Text>
+                  <TouchableOpacity onPress={handleSeeAllOffersPress} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Text style={styles.offresSeeAll}>Voir toutes les offres</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.offresCarousel}
+                  snapToInterval={PARTNERS_OFFER_CARD_WIDTH + spacing.md}
+                  snapToAlignment="start"
+                  decelerationRate="fast">
+                  {currentOffers.map((offer) => {
+                    const imageUri = offer.imageUrl ? normalizeImageUrl(offer.imageUrl) : null;
+                    const partnerLogoUri = offer.partner?.logoUrl ? normalizeImageUrl(offer.partner.logoUrl) : null;
+                    const partnerName = offer.partner?.name ?? 'Partenaire';
+                    const stockTotal = offer.stock ?? 0;
+                    const stockUsed = offer.stockUsed ?? 0;
+                    const restantes = Math.max(0, stockTotal - stockUsed);
+                    const restantesRatio = stockTotal > 0 ? restantes / stockTotal : 1;
+                    const restantesVariant = restantesRatio > 0.5 ? 'green' : restantesRatio > 0.25 ? 'orange' : 'red';
+                    const restantesBg = restantesVariant === 'green' ? `${colors.primary}14` : restantesVariant === 'orange' ? 'rgba(234, 88, 12, 0.18)' : 'rgba(185, 28, 28, 0.18)';
+                    const restantesColor = restantesVariant === 'green' ? colors.primary : restantesVariant === 'orange' ? '#EA580C' : '#B91C1C';
+                    const price = offer.price != null ? `${Number(offer.price).toFixed(2)} €` : null;
+                    const cashbackRate = offer.cashbackRate != null ? Number(offer.cashbackRate) : null;
+                    const hasCashback = cashbackRate != null && cashbackRate >= 0;
+                    const formatOfferDate = (iso: string) => {
+                      try {
+                        return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+                      } catch {
+                        return iso;
+                      }
+                    };
+                    return (
+                      <TouchableOpacity
+                        key={offer.id}
+                        style={styles.offreCard}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          if (offer.partnerId) {
+                            navigation.navigate('PartnerDetail', { partnerId: offer.partnerId });
+                          } else {
+                            handleSeeAllOffersPress();
+                          }
+                        }}>
+                        {imageUri ? (
+                          <Image source={{ uri: imageUri }} style={styles.offreCardImage} resizeMode="cover" />
+                        ) : (
+                          <View style={styles.offreCardImagePlaceholder}>
+                            <Ionicons name="pricetag-outline" size={28} color={colors.textSecondary} />
+                          </View>
+                        )}
+                        <View style={styles.offreCardBody}>
+                          <Text style={styles.offreCardTitle} numberOfLines={2}>{offer.title}</Text>
+                          {offer.subtitle ? (
+                            <Text style={styles.offreCardSubtitle} numberOfLines={1}>{offer.subtitle}</Text>
+                          ) : null}
+                          <Text style={styles.offreCardPartner}>{partnerName}</Text>
+                          <View style={styles.offrePriceCashbackRow}>
+                            {price ? <Text style={styles.offreCardPrice}>{price}</Text> : null}
+                            <View style={styles.offreCashbackItem}>
+                              <Ionicons name="pricetag" size={11} color={hasCashback ? '#05A357' : colors.textSecondary} />
+                              <Text style={[styles.offreCashbackRate, !hasCashback && styles.offreCashbackRateEmpty]}>
+                                {hasCashback ? `${cashbackRate}%` : '—'}
+                              </Text>
+                              <Text style={styles.offreCashbackLabel}>{hasCashback ? "À l'achat" : 'Non renseigné'}</Text>
+                            </View>
+                          </View>
+                          {stockTotal > 0 && (
+                            <View style={[styles.offreRestantesBlock, { backgroundColor: restantesBg }]}>
+                              <Text style={[styles.offreRestantesCount, { color: restantesColor }]}>{restantes}</Text>
+                              <Text style={styles.offreRestantesLabel}>restante{restantes !== 1 ? 's' : ''}</Text>
+                            </View>
+                          )}
+                          {offer.conditions ? (
+                            <Text style={styles.offreCardConditions} numberOfLines={1}>{offer.conditions}</Text>
+                          ) : null}
+                          <View style={styles.offreLogoAndDatesRow}>
+                            <Text style={styles.offreCardDates}>
+                              Du {formatOfferDate(offer.startsAt)} au {formatOfferDate(offer.endsAt)}
+                            </Text>
+                            {partnerLogoUri ? (
+                              <Image source={{ uri: partnerLogoUri }} style={styles.offrePartnerLogo} resizeMode="contain" />
+                            ) : (
+                              <View style={styles.offrePartnerLogoPlaceholder}>
+                                <Text style={styles.offrePartnerLogoPlaceholderText} numberOfLines={1}>{partnerName.slice(0, 2).toUpperCase()}</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
             <View style={styles.searchWrapper}>
               <Ionicons name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
               <TextInput
@@ -416,26 +533,41 @@ export default function PartnersScreen() {
               />
             </View>
             <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.actionButton} onPress={() => setIsFilterModalVisible(true)}>
-                <Ionicons name="options-outline" size={18} color={colors.white} />
-                <Text style={styles.actionButtonText}>Filtres</Text>
+              <TouchableOpacity style={styles.actionButtonWrap} onPress={() => setIsFilterModalVisible(true)}>
+                <LinearGradient
+                  colors={[...CARD_GRADIENT_COLORS]}
+                  locations={[...CARD_GRADIENT_LOCATIONS]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.actionButton}>
+                  <Ionicons name="options-outline" size={18} color={colors.white} />
+                  <Text style={styles.actionButtonText}>Filtres</Text>
+                </LinearGradient>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  styles.locationButton,
-                  nearbyMode && styles.locationButtonActive,
-                ]}
+                style={[styles.actionButtonWrap, styles.locationButtonWrap, nearbyMode && styles.locationButtonWrapActive]}
                 onPress={() => setNearbyMode((prev) => !prev)}>
-                <Ionicons name="location-outline" size={18} color={nearbyMode ? colors.white : colors.primary} />
-                <Text
-                  style={[
-                    styles.actionButtonText,
-                    styles.locationButtonText,
-                    nearbyMode && styles.locationButtonTextActive,
-                  ]}>
-                  {nearbyMode ? `Autour de moi · ${nearbyRadius} km` : 'Autour de moi'}
-                </Text>
+                {nearbyMode ? (
+                  <LinearGradient
+                    colors={[...CARD_GRADIENT_COLORS]}
+                    locations={[...CARD_GRADIENT_LOCATIONS]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.actionButton, styles.locationButton]}>
+                    <Ionicons name="location-outline" size={18} color={colors.white} />
+                    <View style={styles.locationButtonTextBlock}>
+                      <Text style={[styles.actionButtonText, styles.locationButtonTextActive]}>Autour de moi</Text>
+                      <Text style={[styles.actionButtonText, styles.locationButtonTextActive, styles.locationButtonKm]}>
+                        {nearbyRadius} km
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.actionButton, styles.locationButton]}>
+                    <Ionicons name="location-outline" size={18} color={colors.primary} />
+                    <Text style={[styles.actionButtonText, styles.locationButtonText]}>Autour de moi</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
             <Text style={styles.hintText}>Explorez les partenaires près de chez vous.</Text>
@@ -589,12 +721,34 @@ function PartnerCard({
           <View style={styles.partnerTitleRow}>
             <Text style={styles.partnerName} numberOfLines={2}>{partner.name}</Text>
           </View>
-          <Pressable onPress={onToggleFavorite} hitSlop={8}>
-            <Ionicons
-              name={isFavorite ? 'heart' : 'heart-outline'}
-              size={18}
-              color={isFavorite ? accent : colors.textSecondary}
-            />
+          <Pressable onPress={onToggleFavorite} hitSlop={8} style={styles.favoriteHeartWrap}>
+            <View style={styles.favoriteHeartFixed}>
+              {isFavorite ? (
+                <MaskedView
+                  style={styles.favoriteHeartMaskView}
+                  maskElement={
+                    <View style={styles.favoriteHeartMaskInner}>
+                      <Ionicons name="heart" size={18} color="#000000" />
+                    </View>
+                  }>
+                  <LinearGradient
+                    colors={[...CARD_GRADIENT_COLORS]}
+                    locations={[...CARD_GRADIENT_LOCATIONS]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </MaskedView>
+              ) : (
+                <View style={styles.favoriteHeartMaskInner}>
+                  <Ionicons
+                    name="heart-outline"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                </View>
+              )}
+            </View>
           </Pressable>
         </View>
         {badges.length > 0 ? (
@@ -626,7 +780,7 @@ function PartnerCard({
         ) : null}
         <View style={styles.cashbackRow}>
           <View style={styles.cashbackItem}>
-            <Ionicons name="pricetag" size={12} color={colors.primary} />
+            <Ionicons name="pricetag" size={12} color="#05A357" />
             <Text style={styles.cashbackRate}>{partner.permanentOffer.rate}%</Text>
             <Text style={styles.cashbackItemLabel}>Permanent</Text>
           </View>
@@ -723,19 +877,46 @@ function FilterModal({
 
           <Text style={styles.modalLabel}>Territoire</Text>
           <View style={styles.optionRow}>
-            <TouchableOpacity
-              style={[styles.optionChip, !territory && styles.optionChipActive]}
-              onPress={() => onTerritoryChange(null)}>
-              <Text style={[styles.optionChipText, !territory && styles.optionChipTextActive]}>Tous</Text>
-            </TouchableOpacity>
+            {(() => {
+              const isActive = !territory;
+              return (
+                <TouchableOpacity
+                  style={[styles.optionChip, isActive && styles.optionChipActiveWrap]}
+                  onPress={() => onTerritoryChange(null)}>
+                  {isActive ? (
+                    <LinearGradient
+                      colors={[...CARD_GRADIENT_COLORS]}
+                      locations={[...CARD_GRADIENT_LOCATIONS]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.optionChipGradient}>
+                      <Text style={[styles.optionChipText, styles.optionChipTextActive]}>Tous</Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={styles.optionChipText}>Tous</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })()}
             {territoryOptions.map((option) => {
               const isActive = territory === option;
               return (
                 <TouchableOpacity
                   key={option}
-                  style={[styles.optionChip, isActive && styles.optionChipActive]}
+                  style={[styles.optionChip, isActive && styles.optionChipActiveWrap]}
                   onPress={() => onTerritoryChange(option)}>
-                  <Text style={[styles.optionChipText, isActive && styles.optionChipTextActive]}>{option}</Text>
+                  {isActive ? (
+                    <LinearGradient
+                      colors={[...CARD_GRADIENT_COLORS]}
+                      locations={[...CARD_GRADIENT_LOCATIONS]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.optionChipGradient}>
+                      <Text style={[styles.optionChipText, styles.optionChipTextActive]}>{option}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={styles.optionChipText}>{option}</Text>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -748,11 +929,24 @@ function FilterModal({
               return (
                 <TouchableOpacity
                   key={value}
-                  style={[styles.optionChip, isActive && styles.optionChipActive]}
+                  style={[styles.optionChip, isActive && styles.optionChipActiveWrap]}
                   onPress={() => onMinCashbackChange(value)}>
-                  <Text style={[styles.optionChipText, isActive && styles.optionChipTextActive]}>
-                    {value === 0 ? 'Tous' : `≥ ${value}%`}
-                  </Text>
+                  {isActive ? (
+                    <LinearGradient
+                      colors={[...CARD_GRADIENT_COLORS]}
+                      locations={[...CARD_GRADIENT_LOCATIONS]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.optionChipGradient}>
+                      <Text style={[styles.optionChipText, styles.optionChipTextActive]}>
+                        {value === 0 ? 'Tous' : `≥ ${value}%`}
+                      </Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={styles.optionChipText}>
+                      {value === 0 ? 'Tous' : `≥ ${value}%`}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -765,11 +959,20 @@ function FilterModal({
               return (
                 <TouchableOpacity
                   key={key}
-                  style={[styles.optionChip, isActive && styles.optionChipActive]}
+                  style={[styles.optionChip, isActive && styles.optionChipActiveWrap]}
                   onPress={() => onHighlightFilterChange(isActive ? null : key)}>
-                  <Text style={[styles.optionChipText, isActive && styles.optionChipTextActive]}>
-                    {label}
-                  </Text>
+                  {isActive ? (
+                    <LinearGradient
+                      colors={[...CARD_GRADIENT_COLORS]}
+                      locations={[...CARD_GRADIENT_LOCATIONS]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.optionChipGradient}>
+                      <Text style={[styles.optionChipText, styles.optionChipTextActive]}>{label}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={styles.optionChipText}>{label}</Text>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -810,11 +1013,26 @@ function FilterModal({
           </TouchableOpacity>
 
           <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.modalSecondary} onPress={() => onTerritoryChange(null)}>
+            <TouchableOpacity
+              style={styles.modalSecondary}
+              onPress={() => {
+                onTerritoryChange(null);
+                onMinCashbackChange(0);
+                onFavoritesOnlyChange(false);
+                onHighlightFilterChange(null);
+                onBoostedOnlyChange(false);
+              }}>
               <Text style={styles.modalSecondaryText}>Réinitialiser</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalPrimary} onPress={onClose}>
-              <Text style={styles.modalPrimaryText}>Appliquer</Text>
+            <TouchableOpacity style={styles.modalPrimaryWrap} onPress={onClose}>
+              <LinearGradient
+                colors={[...CARD_GRADIENT_COLORS]}
+                locations={[...CARD_GRADIENT_LOCATIONS]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalPrimary}>
+                <Text style={styles.modalPrimaryText}>Appliquer</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -867,6 +1085,157 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
   },
+  offresSection: {
+    marginBottom: spacing.md,
+  },
+  offresSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  offresSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  offresSeeAll: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  offresCarousel: {
+    paddingRight: spacing.lg,
+  },
+  offreCard: {
+    width: PARTNERS_OFFER_CARD_WIDTH,
+    marginRight: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+  },
+  offreCardImage: {
+    width: '100%',
+    height: 100,
+    backgroundColor: colors.greyLight,
+  },
+  offreCardImagePlaceholder: {
+    width: '100%',
+    height: 100,
+    backgroundColor: colors.greyLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offreCardBody: {
+    padding: spacing.sm,
+    paddingBottom: 4,
+  },
+  offreCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginBottom: 2,
+  },
+  offreCardSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  offreCardPartner: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 2,
+  },
+  offrePriceCashbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    marginBottom: 2,
+  },
+  offreCardPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  offreCashbackItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  offreCashbackRate: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#05A357',
+  },
+  offreCashbackRateEmpty: {
+    color: colors.textSecondary,
+  },
+  offreCashbackLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  offreRestantesBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginTop: 8,
+    marginBottom: -8,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    alignSelf: 'flex-start',
+  },
+  offreRestantesCount: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  offreRestantesLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMain,
+  },
+  offreLogoAndDatesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+    marginTop: 4,
+    gap: spacing.sm,
+  },
+  offrePartnerLogo: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.greyLight,
+  },
+  offrePartnerLogoPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.greyBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offrePartnerLogoPlaceholderText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  offreCardDates: {
+    fontSize: 10,
+    color: colors.textTertiary,
+    flex: 1,
+    textAlign: 'left',
+  },
+  offreCardConditions: {
+    fontSize: 10,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
+  },
   searchWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -891,13 +1260,29 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.xs,
   },
+  actionButtonWrap: {
+    flex: 1,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  locationButtonWrap: {
+    flexShrink: 1,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.lightBlue,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  locationButtonWrapActive: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm / 2,
-    backgroundColor: colors.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -908,14 +1293,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   locationButton: {
-    backgroundColor: colors.lightBlue,
-    borderWidth: 1,
-    borderColor: colors.primary,
     flexShrink: 1,
-  },
-  locationButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    borderWidth: 0,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   locationButtonText: {
     color: colors.primary,
@@ -924,6 +1305,15 @@ const styles = StyleSheet.create({
   },
   locationButtonTextActive: {
     color: colors.white,
+  },
+  locationButtonTextBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationButtonKm: {
+    fontSize: 12,
+    marginTop: 1,
+    opacity: 0.95,
   },
   hintText: {
     fontSize: 12,
@@ -1062,7 +1452,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 0, 0, 0.06)',
   },
   partnerBadgeBoosted: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#05A357',
   },
   partnerBadgePopular: {
     backgroundColor: '#EA580C',
@@ -1113,6 +1503,33 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
   },
+  favoriteHeartWrap: {
+    width: 34,
+    height: 34,
+    minWidth: 34,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteHeartFixed: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteHeartMaskView: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteHeartMaskInner: {
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 26,
+    height: 26,
+  },
   partnerName: {
     fontSize: 15,
     fontWeight: '700',
@@ -1133,7 +1550,7 @@ const styles = StyleSheet.create({
   cashbackRate: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#05A357',
   },
   cashbackRateWelcome: {
     color: '#7C3AED',
@@ -1206,9 +1623,18 @@ const styles = StyleSheet.create({
     borderColor: colors.lightPurple,
     backgroundColor: colors.white,
   },
-  optionChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.lightPurple,
+  optionChipActiveWrap: {
+    overflow: 'hidden',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
+  },
+  optionChipGradient: {
+    borderRadius: radius.pill,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   optionChipText: {
     fontSize: 13,
@@ -1216,7 +1642,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   optionChipTextActive: {
-    color: colors.primary,
+    color: colors.white,
   },
   favoriteSwitch: {
     flexDirection: 'row',
@@ -1259,12 +1685,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
-  modalPrimary: {
+  modalPrimaryWrap: {
     flex: 1,
     borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  modalPrimary: {
+    flex: 1,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.primary,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalPrimaryText: {
     color: colors.white,

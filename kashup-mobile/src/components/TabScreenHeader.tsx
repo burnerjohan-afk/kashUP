@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing } from '../../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../../constants/theme';
 
 /** Même hauteur que le bandeau de la page d'accueil (HEADER_CONTENT_HEIGHT) */
 export const TAB_HEADER_HEIGHT = 44;
@@ -36,6 +36,12 @@ export type TabScreenHeaderProps = {
   points?: number | null;
   /** Force l'affichage de la ligne points/cashback même si les valeurs sont null (ex. chargement) */
   showPillsRow?: boolean;
+  /** Bandeau vert dégradé (comme Rewards / Cartes UP) au lieu du fond blanc */
+  variant?: 'default' | 'green';
+  /** Fond blanc opaque (bandeau toujours bien visible, sans transparence au scroll) */
+  solidBackground?: boolean;
+  /** Affiche un bouton retour à gauche (au lieu des notifications) */
+  onBackPress?: () => void;
 };
 
 export function TabScreenHeader({
@@ -47,35 +53,47 @@ export function TabScreenHeader({
   cashback,
   points,
   showPillsRow = false,
+  variant = 'default',
+  solidBackground = false,
+  onBackPress,
 }: TabScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const paddingTop = Math.max(0, insets.top - 36);
   const showPills = showPillsRow || cashback != null || points != null;
   const cashbackValue = cashback != null ? cashback : 0;
   const pointsValue = points != null ? points : 0;
+  const isGreen = variant === 'green';
 
-  const backgroundColor = scrollY.interpolate({
+  const backgroundColor = solidBackground
+    ? (isGreen ? 'rgba(3,77,53,0.98)' : colors.white)
+    : scrollY.interpolate({
     inputRange: [0, 60, 120],
     outputRange: [
-      'rgba(255,255,255,0.92)',
-      'rgba(255,255,255,0.90)',
-      'rgba(255,255,255,0.88)',
+      isGreen ? 'rgba(3,77,53,0.98)' : 'rgba(255,255,255,0.92)',
+      isGreen ? 'rgba(3,77,53,0.96)' : 'rgba(255,255,255,0.90)',
+      isGreen ? 'rgba(3,77,53,0.94)' : 'rgba(255,255,255,0.88)',
     ],
     extrapolate: 'clamp',
   });
 
   const hasActiveNotifications = unreadCount > 0;
+  const iconColor = isGreen ? colors.white : colors.textMain;
 
-  return (
-    <Animated.View
-      style={[styles.wrapper, { paddingTop, backgroundColor }]}
-      pointerEvents="box-none">
-      <View style={styles.inner}>
+  const innerContent = (
+    <View style={styles.inner}>
+      {onBackPress ? (
         <TouchableOpacity
-          style={styles.headerIcon}
+          style={[styles.headerIcon, isGreen && styles.headerIconOnGreen]}
+          activeOpacity={0.7}
+          onPress={onBackPress}>
+          <Ionicons name="chevron-back" size={24} color={iconColor} />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.headerIcon, isGreen && styles.headerIconOnGreen]}
           activeOpacity={0.7}
           onPress={onNotificationPress}>
-          <Ionicons name="notifications-outline" size={24} color={colors.textMain} />
+          <Ionicons name="notifications-outline" size={24} color={iconColor} />
           {hasActiveNotifications && (
             <View style={styles.headerBadge}>
               <Text style={styles.headerBadgeText}>
@@ -84,39 +102,66 @@ export function TabScreenHeader({
             </View>
           )}
         </TouchableOpacity>
-        {showPills ? (
-          <View style={styles.pillsRow}>
-            <LinearGradient
-              colors={['#0ABF5C', '#05A357', '#048A48']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.pillPoints}>
-              <Ionicons name="star" size={16} color="#FFF" />
-              <Text style={styles.pillPointsText}>{formatPoints(pointsValue)}</Text>
-            </LinearGradient>
-            <LinearGradient
-              colors={['#F5F5F5', '#E0E0E0', '#BDBDBD']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.pillCashback}>
-              <Text style={styles.pillCashbackSymbol}>€</Text>
-              <Text style={styles.pillCashbackValue}>{formatCashback(cashbackValue)}</Text>
-            </LinearGradient>
-          </View>
-        ) : title ? (
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {title}
-          </Text>
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
-        <TouchableOpacity
-          style={styles.headerIcon}
-          activeOpacity={0.7}
-          onPress={onProfilePress}>
-          <Ionicons name="person-circle-outline" size={24} color={colors.textMain} />
-        </TouchableOpacity>
-      </View>
+      )}
+      {showPills ? (
+        <View style={styles.pillsRow}>
+          <LinearGradient
+            colors={['#059669', colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.pillPoints}>
+            <Ionicons name="star" size={16} color="#FFF" />
+            <Text style={styles.pillPointsText}>{formatPoints(pointsValue)}</Text>
+          </LinearGradient>
+          <LinearGradient
+            colors={['#059669', colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.pillCashback}>
+            <Text style={styles.pillCashbackSymbol}>€</Text>
+            <Text style={styles.pillCashbackValue}>{formatCashback(cashbackValue)}</Text>
+          </LinearGradient>
+        </View>
+      ) : title ? (
+        <Text style={[styles.headerTitle, isGreen && styles.headerTitleOnGreen]} numberOfLines={1}>
+          {title}
+        </Text>
+      ) : (
+        <View style={styles.headerSpacer} />
+      )}
+      <TouchableOpacity
+        style={[styles.headerIcon, isGreen && styles.headerIconOnGreen]}
+        activeOpacity={0.7}
+        onPress={onProfilePress}>
+        <Ionicons name="person-circle-outline" size={24} color={iconColor} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (isGreen) {
+    return (
+      <Animated.View style={[styles.wrapper, styles.wrapperGreen, { paddingTop }]} pointerEvents="box-none">
+        <LinearGradient
+          colors={[...CARD_GRADIENT_COLORS]}
+          locations={[...CARD_GRADIENT_LOCATIONS]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.wrapperInner}>{innerContent}</View>
+      </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View
+      style={[
+        styles.wrapper,
+        { paddingTop },
+        solidBackground ? { backgroundColor: backgroundColor as string } : { backgroundColor },
+      ]}
+      pointerEvents="box-none">
+      {innerContent}
     </Animated.View>
   );
 }
@@ -130,6 +175,20 @@ const styles = StyleSheet.create({
     zIndex: 10,
     paddingBottom: 0,
     paddingHorizontal: spacing.lg,
+    overflow: 'hidden',
+  },
+  wrapperGreen: {
+    paddingHorizontal: 0,
+  },
+  wrapperInner: {
+    paddingHorizontal: spacing.lg,
+  },
+  headerIconOnGreen: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  headerTitleOnGreen: {
+    color: colors.white,
   },
   pillsRow: {
     flexDirection: 'row',
@@ -145,12 +204,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     minWidth: 84,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 22,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
-    shadowColor: '#05A357',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
@@ -172,32 +231,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     minWidth: 84,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 22,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
-    shadowColor: '#616161',
+    borderColor: 'rgba(255,255,255,0.4)',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 6,
     overflow: 'hidden',
   },
   pillCashbackSymbol: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#424242',
+    color: '#FFFFFF',
     letterSpacing: 0.2,
   },
   pillCashbackValue: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#424242',
+    color: '#FFFFFF',
     letterSpacing: 0.5,
-    textShadowColor: 'rgba(255,255,255,0.9)',
+    textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    textShadowRadius: 2,
   },
   inner: {
     flexDirection: 'row',

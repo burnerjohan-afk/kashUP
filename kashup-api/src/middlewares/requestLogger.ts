@@ -66,80 +66,89 @@ const sanitizeData = (data: any, depth = 0): any => {
   return data;
 };
 
+const LOG_REQUESTS = process.env.LOG_REQUESTS === 'true';
+const LOG_RESPONSES = process.env.LOG_RESPONSES === 'true';
+const SILENT_PATHS = ['/health', '/debug/network', '/api/v1/health', '/api/v1/debug/network'];
+const isSilentPath = (path: string) => SILENT_PATHS.some((p) => path === p || path.endsWith(p));
+
 /**
- * Middleware pour logger toutes les requêtes et erreurs
- * Anonymise automatiquement les données sensibles (RGPD Art. 32)
+ * Middleware de log (discret par défaut). Ne log pas /health ni /debug/network pour éviter le spam.
+ * LOG_REQUESTS=true / LOG_RESPONSES=true pour activer les logs détaillés.
  */
 export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   const requestId = (req as any).requestId;
+  const silent = isSilentPath(req.path);
 
-  // Nettoyer le body de la requête avant logging
-  const sanitizedBody = req.body ? sanitizeData(req.body) : undefined;
-
-  // Logger la requête entrante
-  logger.info({
-    requestId,
-    method: req.method,
-    path: req.path,
-    url: req.url,
-    headers: {
-      authorization: req.headers.authorization ? 'present' : 'missing',
-      'content-type': req.headers['content-type'],
-      'content-length': req.headers['content-length']
-    },
-    query: sanitizeData(req.query),
-    params: sanitizeData(req.params),
-    body: sanitizedBody, // Body nettoyé
-    user: req.user ? { id: req.user.sub, role: req.user.role } : null
-  }, '📨 Requête entrante');
-
-  // Capturer la réponse
-  const originalSend = res.send;
-  res.send = function (body) {
-    const duration = Date.now() - startTime;
-    
-    // Vérifier le Content-Type de la réponse
-    const contentType = res.getHeader('content-type');
-    
-    // Nettoyer le body de la réponse avant logging
-    let sanitizedBodyPreview: any = undefined;
-    if (typeof body === 'string' && body.length > 0) {
-      try {
-        // Essayer de parser en JSON pour nettoyer
-        const parsed = JSON.parse(body);
-        const sanitized = sanitizeData(parsed);
-        sanitizedBodyPreview = JSON.stringify(sanitized).substring(0, 200);
-      } catch {
-        // Si ce n'est pas du JSON, prendre un aperçu limité
-        sanitizedBodyPreview = body.substring(0, 100);
-      }
-    } else if (body) {
-      sanitizedBodyPreview = sanitizeData(body);
-    }
-    
+  if (LOG_REQUESTS && !silent) {
+    const sanitizedBody = req.body ? sanitizeData(req.body) : undefined;
     logger.info({
       requestId,
       method: req.method,
       path: req.path,
-      status: res.statusCode,
-      contentType: contentType || 'not set',
-      duration: `${duration}ms`,
+      url: req.url,
+      headers: {
+        authorization: req.headers.authorization ? 'present' : 'missing',
+        'content-type': req.headers['content-type'],
+      },
+      query: Object.keys(req.query || {}).length ? sanitizeData(req.query) : undefined,
+      params: Object.keys(req.params || {}).length ? sanitizeData(req.params) : undefined,
+      body: sanitizedBody,
       user: req.user ? { id: req.user.sub, role: req.user.role } : null,
-      bodyPreview: sanitizedBodyPreview // Body nettoyé
-    }, res.statusCode >= 400 ? '❌ Réponse d\'erreur' : '✅ Réponse réussie');
-    
-    // Si le Content-Type n'est pas JSON, logger un avertissement
-    if (res.statusCode >= 400 && contentType && !String(contentType).includes('application/json')) {
-      logger.error({
+    }, 'Requête entrante');
+  }
+
+  const originalSend = res.send;
+  res.send = function (body: unknown) {
+    const duration = Date.now() - startTime;
+    const statusCode = res.statusCode;
+    const isError = statusCode >= 400;
+    if (silent) return originalSend.call(this, body);
+
+    try {
+      const contentType = res.getHeader('content-type');
+      let sanitizedBodyPreview: string | undefined;
+      if (typeof body === 'string' && body.length > 0) {
+        try {
+          const parsed = JSON.parse(body);
+          const sanitized = sanitizeData(parsed);
+          sanitizedBodyPreview = JSON.stringify(sanitized).substring(0, 200);
+        } catch {
+          sanitizedBodyPreview = body.substring(0, 100);
+        }
+      } else {
+        sanitizedBodyPreview = body != null ? String(body).substring(0, 100) : undefined;
+      }
+
+      const logPayload = {
         requestId,
-        contentType,
-        bodyPreview: sanitizedBodyPreview,
+        method: req.method,
         path: req.path,
-        method: req.method
-      }, '⚠️ Réponse d\'erreur non-JSON détectée !');
+        status: statusCode,
+        duration: `${duration}ms`,
+        ...(isError && sanitizedBodyPreview != null && { bodyPreview: sanitizedBodyPreview }),
+      };
+
+      if (isError || LOG_RESPONSES) {
+        if (isError) {
+          logger.error(logPayload, 'Réponse erreur');
+        } else {
+          logger.info(logPayload, 'Réponse OK');
+        }
+      }
+      if (isError && contentType && !String(contentType).includes('application/json')) {
+        logger.error(
+          { requestId, contentType, bodyPreview: sanitizedBodyPreview, path: req.path, method: req.method },
+          'Réponse d\'erreur non-JSON'
+        );
+      }
+    } catch (logErr) {
+      // Ne jamais faire échouer l'envoi de la réponse à cause du log (évite TypeError pino)
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[requestLogger] Log failed:', logErr);
+      }
     }
-    
+
     return originalSend.call(this, body);
   };
 

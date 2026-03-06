@@ -23,7 +23,6 @@ export function getLocalIPv4(): string | null {
       // Chercher la première adresse IPv4 non-internal
       for (const addr of addresses) {
         if (addr.family === 'IPv4' && !addr.internal) {
-          logger.debug({ interface: name, ip: addr.address }, 'IPv4 LAN détectée');
           return addr.address;
         }
       }

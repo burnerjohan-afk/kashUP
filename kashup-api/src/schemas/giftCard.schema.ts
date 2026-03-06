@@ -45,6 +45,7 @@ export const carteUpLibreBodySchema = z.object({
   partenairesEligibles: z.string(), // JSON array
   conditions: z.string().optional(),
   commentCaMarche: z.string().optional(),
+  cashbackRate: z.coerce.number().min(0).max(100).optional().nullable(),
   status: z.enum(['active', 'inactive']),
 });
 export type CarteUpLibreBody = z.infer<typeof carteUpLibreBodySchema>;
@@ -59,7 +60,91 @@ export const carteUpPredefinieBodySchema = z.object({
   dureeValiditeJours: z.coerce.number().int().min(1).optional(),
   conditions: z.string().optional(),
   commentCaMarche: z.string().optional(),
+  cashbackRate: z.coerce.number().min(0).max(100).optional().nullable(),
   status: z.enum(['active', 'inactive']),
 });
 export type CarteUpPredefinieBody = z.infer<typeof carteUpPredefinieBodySchema>;
 
+// Envoi d'une offre prédefinie à un utilisateur (notification in-app)
+export const sendPredefinedGiftSchema = z.object({
+  offerId: z.string().min(1, 'Offre requise'),
+  beneficiaryEmail: z.string().email('E-mail du destinataire invalide'),
+  message: z.string().max(500).optional(),
+});
+export type SendPredefinedGiftInput = z.infer<typeof sendPredefinedGiftSchema>;
+
+// Envoi d'une Box UP à un utilisateur (notification in-app)
+export const sendBoxUpSchema = z.object({
+  boxId: z.string().min(1, 'Box requise'),
+  beneficiaryEmail: z.string().email('E-mail du destinataire invalide'),
+  message: z.string().max(500).optional(),
+});
+export type SendBoxUpInput = z.infer<typeof sendBoxUpSchema>;
+
+// Carte Sélection UP : montant libre, pas de catalogue (envoi par email PDF ou notification app)
+export const sendSelectionUpSchema = z.object({
+  amount: z.coerce.number().positive('Le montant doit être positif'),
+  beneficiaryEmail: z.string().email('E-mail du destinataire invalide'),
+  message: z.string().max(500).optional(),
+  partnerId: z.string().optional(),
+  partnerName: z.string().optional(),
+});
+export type SendSelectionUpInput = z.infer<typeof sendSelectionUpSchema>;
+
+// ——— Paiement par carte (Stripe Apple Pay / Google Pay) ———
+
+export const giftTypeSchema = z.enum(['carte_up', 'selection_up', 'box_up']);
+export type GiftType = z.infer<typeof giftTypeSchema>;
+
+/** Créer une intention de paiement Stripe pour un cadeau (montant en centimes déduit du payload). */
+export const createPaymentIntentForGiftSchema = z.discriminatedUnion('giftType', [
+  z.object({
+    giftType: z.literal('carte_up'),
+    offerId: z.string().min(1),
+    beneficiaryEmail: z.string().email(),
+    message: z.string().max(500).optional(),
+  }),
+  z.object({
+    giftType: z.literal('selection_up'),
+    amount: z.coerce.number().positive(),
+    beneficiaryEmail: z.string().email(),
+    message: z.string().max(500).optional(),
+    partnerId: z.string().optional(),
+    partnerName: z.string().optional(),
+  }),
+  z.object({
+    giftType: z.literal('box_up'),
+    boxId: z.string().min(1),
+    beneficiaryEmail: z.string().email(),
+    message: z.string().max(500).optional(),
+  }),
+]);
+export type CreatePaymentIntentForGiftInput = z.infer<typeof createPaymentIntentForGiftSchema>;
+
+/** Confirmer un paiement carte et créer l'envoi (après succès côté client Stripe). */
+export const confirmCardPaymentForGiftSchema = z.discriminatedUnion('giftType', [
+  z.object({
+    paymentIntentId: z.string().min(1),
+    giftType: z.literal('carte_up'),
+    offerId: z.string().min(1),
+    beneficiaryEmail: z.string().email(),
+    message: z.string().max(500).optional(),
+  }),
+  z.object({
+    paymentIntentId: z.string().min(1),
+    giftType: z.literal('selection_up'),
+    amount: z.coerce.number().positive(),
+    beneficiaryEmail: z.string().email(),
+    message: z.string().max(500).optional(),
+    partnerId: z.string().optional(),
+    partnerName: z.string().optional(),
+  }),
+  z.object({
+    paymentIntentId: z.string().min(1),
+    giftType: z.literal('box_up'),
+    boxId: z.string().min(1),
+    beneficiaryEmail: z.string().email(),
+    message: z.string().max(500).optional(),
+  }),
+]);
+export type ConfirmCardPaymentForGiftInput = z.infer<typeof confirmCardPaymentForGiftSchema>;

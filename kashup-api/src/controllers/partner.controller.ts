@@ -555,8 +555,15 @@ const processFormData = async (data: any): Promise<any> => {
   }
 
   // Gérer boostEnabled (alias pour boostable)
-  if (processed.boostEnabled !== undefined && processed.boostable === undefined) {
+  if (processed.boostEnabled !== undefined) {
     processed.boostable = processed.boostEnabled === 'true' || processed.boostEnabled === '1' || processed.boostEnabled === true;
+  }
+
+  // Convertir giftCardEnabled (string -> boolean)
+  if (processed.giftCardEnabled !== undefined && processed.giftCardEnabled !== '') {
+    if (typeof processed.giftCardEnabled === 'string') {
+      processed.giftCardEnabled = processed.giftCardEnabled === 'true' || processed.giftCardEnabled === '1' || processed.giftCardEnabled === 'on';
+    }
   }
 
   // Parser les tableaux JSON
@@ -644,7 +651,7 @@ const processFormData = async (data: any): Promise<any> => {
   // Ces champs sont ignorés mais parsés pour éviter les erreurs
   // NOTE: siret, phone, description, shortDescription, status, additionalInfo, affiliations, openingHours SONT stockés dans Partner
   const ignoredFields = [
-    'giftCardEnabled', 'boostEnabled', // Alias pour boostable (déjà converti)
+    'boostEnabled', // Alias pour boostable (déjà converti en boostable)
     'giftCardCashbackRate', 'boostRate', // Champs spécifiques non stockés dans Partner
     'openingHoursStart', 'openingHoursEnd',
     'welcomeUserRate', 'welcomeKashUPRate', 'permanentUserRate', 'permanentKashUPRate', // Mappés vers discovery* / permanent*Share
@@ -657,7 +664,7 @@ const processFormData = async (data: any): Promise<any> => {
     'address', 'websiteUrl', 'facebookUrl', 'instagramUrl', 'tauxCashbackBase', 'discoveryCashbackRate', 'permanentCashbackRate',
     'discoveryCashbackKashupShare', 'discoveryCashbackUserShare', 'permanentCashbackKashupShare', 'permanentCashbackUserShare',
     'pointsPerTransaction', 'territories', 'latitude', 'longitude', 
-    'boostable', 'categoryId', 'status', 'additionalInfo', 'affiliations', 'menuImages', 'photos', 'marketingPrograms'];
+    'boostable', 'giftCardEnabled', 'categoryId', 'status', 'additionalInfo', 'affiliations', 'menuImages', 'photos', 'marketingPrograms'];
   
   const unknownFields = Object.keys(processed).filter(key => 
     !schemaFields.includes(key) && 
@@ -754,10 +761,10 @@ const processFormData = async (data: any): Promise<any> => {
   // Supprimer les champs qui n'existent pas dans le schéma Prisma
   const allowedFields = [
     'name', 'slug', 'logoUrl', 'shortDescription', 'description', 'siret', 'phone', 'openingHours', 'openingDays',
-    'address', 'websiteUrl', 'facebookUrl', 'instagramUrl',
+    'address', 'websiteUrl', 'facebookUrl', 'instagramUrl', 'territoryDetails',
     'tauxCashbackBase', 'discoveryCashbackRate', 'permanentCashbackRate',
     'discoveryCashbackKashupShare', 'discoveryCashbackUserShare', 'permanentCashbackKashupShare', 'permanentCashbackUserShare',
-    'pointsPerTransaction', 'territories', 'latitude', 'longitude', 'boostable', 'categoryId',
+    'pointsPerTransaction', 'territories', 'latitude', 'longitude', 'boostable', 'giftCardEnabled', 'categoryId',
     'status', 'additionalInfo', 'affiliations', 'menuImages', 'photos', 'marketingPrograms'
   ];
   
@@ -778,17 +785,17 @@ export const createPartnerHandler = asyncHandler(async (req: Request, res: Respo
   // Détecter le type de requête (JSON ou multipart)
   const contentType = req.headers['content-type'] || '';
   const isMultipart = contentType.includes('multipart/form-data');
-  const hasFile = !!req.file;
-  
+  const filesForLog = extractFiles(req);
+  const hasFile = !!(filesForLog.fields && Object.keys(filesForLog.fields).length > 0);
+
   // Log du payload reçu en dev
   if (process.env.NODE_ENV === 'development') {
     logger.info({
       contentType,
       isMultipart,
       hasFile,
-      fileField: req.file?.fieldname,
-      fileMimetype: req.file?.mimetype,
-      fileSize: req.file?.size,
+      fileFields: filesForLog.fields ? Object.keys(filesForLog.fields) : [],
+      logoFile: !!filesForLog.fields?.logo?.[0],
       bodyKeys: Object.keys(req.body || {}),
       bodyValues: Object.entries(req.body || {}).reduce((acc, [key, value]) => {
         // Tronquer les valeurs longues pour les logs
@@ -814,71 +821,38 @@ export const createPartnerHandler = asyncHandler(async (req: Request, res: Respo
         marketingPrograms: req.body.marketingPrograms,
         openingDays: req.body.openingDays
       },
-      files: req.files ? (typeof req.files === 'object' && !Array.isArray(req.files) ? Object.keys(req.files) : 'array') : 'no files',
-      file: req.file ? req.file.fieldname : 'no single file',
+      files: filesForLog.fields ? Object.keys(filesForLog.fields) : 'no files',
       user: req.user ? { id: req.user.sub, role: req.user.role } : 'no user'
     }, `📥 Données reçues pour création de partenaire (${isMultipart ? 'multipart' : 'JSON'})`);
   }
 
-  // Extraire le fichier logo depuis req.file (format multer.single)
-  let logoFile: Express.Multer.File | undefined;
+  // Extraire les fichiers depuis req (format multer.fields, comme PATCH)
+  const files = extractFiles(req);
+  const logoFile = files.fields?.logo?.[0];
   let logoUrl: string | null = null;
-  
-  if (req.file) {
-    // Vérifier que le champ est bien "logo"
-    if (req.file.fieldname !== 'logo') {
-      throw new AppError(
-        `Champ de fichier inattendu: "${req.file.fieldname}". Seul le champ "logo" est autorisé pour POST /partners.`,
-        400,
-        {
-          code: 'INVALID_FILE_FIELD',
-          received: req.file.fieldname,
-          expected: 'logo'
-        }
-      );
-    }
-    
-    // Vérifier que c'est une image
+
+  if (logoFile) {
     const allowedImageMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedImageMimes.includes(req.file.mimetype)) {
+    if (!allowedImageMimes.includes(logoFile.mimetype)) {
       throw new AppError(
-        `Type de fichier non autorisé pour logo: ${req.file.mimetype}. Types acceptés: images (JPEG, PNG, WebP, GIF).`,
+        `Type de fichier non autorisé pour logo: ${logoFile.mimetype}. Types acceptés: images (JPEG, PNG, WebP, GIF).`,
         400,
         {
           code: 'INVALID_FILE_TYPE',
-          received: req.file.mimetype,
+          received: logoFile.mimetype,
           allowed: allowedImageMimes
         }
       );
     }
-    
-    logoFile = req.file;
-    
-    // Vérifier que le fichier existe bien sur le disque
     const fs = await import('fs');
     if (fs.existsSync(logoFile.path)) {
-      logger.info({ 
-        path: logoFile.path,
-        filename: logoFile.filename,
-        size: logoFile.size,
-        mimetype: logoFile.mimetype
-      }, '✅ Fichier logo vérifié et existe sur le disque');
+      logger.info({ path: logoFile.path, filename: logoFile.filename, size: logoFile.size, mimetype: logoFile.mimetype }, '✅ Fichier logo vérifié et existe sur le disque');
     } else {
-      logger.error({ 
-        path: logoFile.path,
-        filename: logoFile.filename
-      }, '❌ Fichier logo N\'EXISTE PAS sur le disque');
+      logger.error({ path: logoFile.path, filename: logoFile.filename }, '❌ Fichier logo N\'EXISTE PAS sur le disque');
     }
-    
     const processedLogoUrl = await processUploadedFile(logoFile, 'partners');
     logoUrl = processedLogoUrl || null;
-    logger.info({ 
-      logoUrl, 
-      filePath: logoFile.path,
-      filename: logoFile.filename,
-      mimetype: logoFile.mimetype, 
-      size: logoFile.size 
-    }, '✅ Logo traité');
+    logger.info({ logoUrl, filePath: logoFile.path, filename: logoFile.filename, mimetype: logoFile.mimetype, size: logoFile.size }, '✅ Logo traité');
   } else {
     logger.info('ℹ️ Aucun logo fourni (optionnel)');
   }

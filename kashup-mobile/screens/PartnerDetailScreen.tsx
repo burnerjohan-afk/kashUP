@@ -17,13 +17,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp, NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Ionicons } from '@expo/vector-icons';
+
+import { FacebookLogo, InstagramLogo } from '@/src/components/SocialLogos';
 
 import { getPartnerById } from '@/src/services/partnerService';
 import { adaptPartnerFromApi } from '@/src/utils/partnerAdapter';
 import type { PartnerViewModel } from '@/src/utils/partnerAdapter';
-import { colors } from '../constants/theme';
+import { useUserTerritory } from '@/src/hooks/useUserTerritory';
+import { TERRITORY_OPTIONS, type TerritoryKey } from '@/src/utils/territoryFromLocation';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import { getCategoryAccent } from '../constants/categoryAccents';
 import { getCategoryHeroImage } from '../constants/categoryHeroImages';
 import type { MainStackParamList } from '../navigation/MainStack';
@@ -115,6 +120,9 @@ export default function PartnerDetailScreen() {
   const [welcomeUsed, setWelcomeUsed] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [activeOfferTab, setActiveOfferTab] = useState<'cashback' | 'vouchers'>('cashback');
+  const [selectedTerritory, setSelectedTerritory] = useState<TerritoryKey | null>(null);
+
+  const { territory: userTerritory } = useUserTerritory();
 
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +131,14 @@ export default function PartnerDetailScreen() {
     getPartnerById(partnerId)
       .then((apiPartner) => {
         if (!cancelled) {
-          setPartner(adaptPartnerFromApi(apiPartner));
+          const adapted = adaptPartnerFromApi(apiPartner);
+          setPartner(adapted);
+          const territories = adapted.territories && adapted.territories.length > 0
+            ? adapted.territories
+            : ['Martinique'];
+          const normalized = territories.map((t) => String(t).charAt(0).toUpperCase() + String(t).slice(1).toLowerCase()) as TerritoryKey[];
+          const preferred = (userTerritory && normalized.includes(userTerritory)) ? userTerritory : (normalized[0] ?? 'Martinique');
+          setSelectedTerritory(preferred);
         }
       })
       .catch((err) => {
@@ -140,6 +155,17 @@ export default function PartnerDetailScreen() {
     };
   }, [partnerId]);
 
+  // Synchroniser le département affiché avec la localisation utilisateur quand elle est disponible
+  useEffect(() => {
+    if (!partner || !userTerritory) return;
+    const list = partner.territories && partner.territories.length > 0
+      ? partner.territories.map((t) => String(t).charAt(0).toUpperCase() + String(t).slice(1).toLowerCase())
+      : ['Martinique'];
+    if (list.includes(userTerritory)) {
+      setSelectedTerritory(userTerritory);
+    }
+  }, [partner?.id, userTerritory, partner?.territories]);
+
   const openLink = (url?: string) => {
     if (!url) return;
     Linking.openURL(url).catch(() => {
@@ -147,12 +173,48 @@ export default function PartnerDetailScreen() {
     });
   };
 
+  // Adresse et réseaux selon le département sélectionné (territoryDetails) ou valeurs globales du partenaire
+  const displayContact = useMemo(() => {
+    if (!partner) return { address: '', websiteUrl: '', facebookUrl: '', instagramUrl: '' };
+    const dept = selectedTerritory ?? (partner.territories?.[0] ? String(partner.territories[0]).charAt(0).toUpperCase() + String(partner.territories[0]).slice(1).toLowerCase() : 'Martinique') as TerritoryKey;
+    const details = partner.territoryDetails?.[dept];
+    return {
+      address: (details?.address && details.address.trim()) ? details.address : (partner.address ?? ''),
+      websiteUrl: (details?.websiteUrl && details.websiteUrl.trim()) ? details.websiteUrl : (partner.websiteUrl ?? ''),
+      facebookUrl: (details?.facebookUrl && details.facebookUrl.trim()) ? details.facebookUrl : (partner.facebookUrl ?? ''),
+      instagramUrl: (details?.instagramUrl && details.instagramUrl.trim()) ? details.instagramUrl : (partner.instagramUrl ?? ''),
+    };
+  }, [partner, selectedTerritory]);
+
+  const availableTerritoriesForPartner = useMemo(() => {
+    if (!partner?.territories?.length) return [];
+    return TERRITORY_OPTIONS.filter((t) =>
+      partner.territories!.some((pt) => String(pt).toLowerCase() === t.toLowerCase())
+    );
+  }, [partner?.territories]);
+
+  const heroBadges = useMemo(() => {
+    const list: Array<{ key: string; label: string; style: 'pepite' | 'boosted' | 'popular' }> = [];
+    if (!partner) return list;
+    if (partner.marketingPrograms?.includes('pepites') || partner.isRecommended) {
+      list.push({ key: 'pepite', label: 'Pépite', style: 'pepite' });
+    }
+    if (partner.marketingPrograms?.includes('boosted') || partner.isBoosted) {
+      list.push({ key: 'boosted', label: 'Boosté', style: 'boosted' });
+    }
+    if (partner.marketingPrograms?.includes('most-searched') || partner.isPopular) {
+      list.push({ key: 'popular', label: 'Populaire', style: 'popular' });
+    }
+    return list;
+  }, [partner?.marketingPrograms, partner?.isRecommended, partner?.isBoosted, partner?.isPopular]);
+
   const openDirections = useCallback(async () => {
     if (!partner) return;
     const { latitude, longitude, name, city } = partner;
-    const addressQuery = `${name} ${city}`;
+    const addressForDir = displayContact.address?.trim() || `${name} ${city}`;
+    const addressQuery = addressForDir;
     const hasCoords = typeof latitude === 'number' && typeof longitude === 'number';
-    const destination = hasCoords ? `${latitude},${longitude}` : encodeURIComponent(addressQuery);
+    const destination = hasCoords ? `${latitude},${longitude}` : encodeURIComponent(addressQuery || `${name} ${city}`);
     const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
     const appleUrl = hasCoords
       ? `http://maps.apple.com/?daddr=${latitude},${longitude}`
@@ -185,7 +247,7 @@ export default function PartnerDetailScreen() {
       ...buttons,
       { text: 'Annuler', style: 'cancel' as const },
     ]);
-  }, [partner]);
+  }, [partner, displayContact]);
 
   // Tous les hooks doivent être appelés avant tout return conditionnel (règles des Hooks React)
   const presentation = useMemo(
@@ -250,33 +312,117 @@ export default function PartnerDetailScreen() {
               <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
                 <FontAwesome name="chevron-left" size={18} color="#FFFFFF" />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.favoriteButton}
-                onPress={() => setIsFavorite((prev) => !prev)}
-                accessibilityLabel={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
-                <FontAwesome name={isFavorite ? 'heart' : 'heart-o'} size={20} color="#FFFFFF" />
-              </TouchableOpacity>
+              <View style={styles.favoriteButtonWrapper} pointerEvents="box-none">
+                <TouchableOpacity
+                  style={styles.favoriteButtonTouchable}
+                  onPress={() => setIsFavorite((prev) => !prev)}
+                  activeOpacity={1}
+                  accessibilityLabel={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
+                  <View style={styles.favoriteButtonInner} collapsable={false}>
+                    <View style={[styles.favoriteHeartLayer, !isFavorite && styles.favoriteHeartLayerHidden]}>
+                      <MaskedView
+                        style={styles.favoriteButton}
+                        maskElement={
+                          <View style={styles.favoriteHeartMask}>
+                            <FontAwesome name="heart" size={20} color="#000000" />
+                          </View>
+                        }>
+                        <LinearGradient
+                          colors={[...CARD_GRADIENT_COLORS]}
+                          locations={[...CARD_GRADIENT_LOCATIONS]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={StyleSheet.absoluteFill}
+                        />
+                      </MaskedView>
+                    </View>
+                    <View style={[styles.favoriteHeartLayer, isFavorite && styles.favoriteHeartLayerHidden]}>
+                      <View style={styles.favoriteButton}>
+                        <FontAwesome name="heart-o" size={20} color="#FFFFFF" />
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </View>
               <HeroLogo partner={partner} />
               <Text style={styles.heroName}>{partner.name}</Text>
-              <Text style={styles.heroLocation}>
-                {partner.city}, {partner.country}
-              </Text>
-              {(partner.marketingPrograms?.includes('pepites') || partner.isRecommended) && (
-                <View style={styles.heroPepiteBadge}>
-                  <Text style={styles.heroPepiteText}>Pépite KashUP</Text>
+              <Text style={styles.heroLocation}>{partner.city}</Text>
+              {heroBadges.length > 0 ? (
+                <View style={styles.heroBadgesRow}>
+                  {heroBadges.map((b) => (
+                    <View
+                      key={b.key}
+                      style={[
+                        styles.heroBadgePill,
+                        b.style === 'pepite' && styles.heroBadgePepite,
+                        b.style === 'boosted' && styles.heroBadgeBoosted,
+                        b.style === 'popular' && styles.heroBadgePopular,
+                      ]}>
+                      {b.style === 'pepite' && <Ionicons name="star" size={10} color={colors.accentYellow} />}
+                      {b.style === 'boosted' && <Ionicons name="flash" size={10} color={colors.white} />}
+                      {b.style === 'popular' && <Ionicons name="trending-up" size={10} color={colors.white} />}
+                      <Text
+                        style={[
+                          styles.heroBadgePillText,
+                          b.style === 'boosted' && styles.heroBadgePillTextBoosted,
+                          b.style === 'popular' && styles.heroBadgePillTextPopular,
+                        ]}
+                        numberOfLines={1}>
+                        {b.label}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
-              )}
+              ) : null}
             </LinearGradient>
           </ImageBackground>
         </View>
 
-        {(partner.address || partner.phone || partner.openingHours || (partner.openingDays && partner.openingDays.length > 0)) ? (
+        {availableTerritoriesForPartner.length >= 1 ? (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Département</Text>
+            <Text style={styles.cardHint}>
+              {availableTerritoriesForPartner.length > 1
+                ? 'Choisissez le département pour afficher l\'adresse et les réseaux correspondants.'
+                : 'Département du partenaire.'}
+            </Text>
+            <View style={styles.territorySelector}>
+              {availableTerritoriesForPartner.map((dept) => {
+                const isActive = selectedTerritory === dept;
+                return (
+                  <TouchableOpacity
+                    key={dept}
+                    style={[styles.territoryChipWrap, isActive && styles.territoryChipWrapActive]}
+                    onPress={() => setSelectedTerritory(dept)}
+                    accessibilityLabel={`Voir les infos pour ${dept}`}>
+                    {isActive ? (
+                      <LinearGradient
+                        colors={[...CARD_GRADIENT_COLORS]}
+                        locations={[...CARD_GRADIENT_LOCATIONS]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.territoryChip}>
+                        <Text style={styles.territoryChipTextActive}>{dept}</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={styles.territoryChip}>
+                        <Text style={styles.territoryChipText}>{dept}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {(displayContact.address || partner.phone || partner.openingHours || (partner.openingDays && partner.openingDays.length > 0)) ? (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Contact & Horaires</Text>
-            {partner.address ? (
+            {displayContact.address ? (
               <View style={styles.contactRow}>
                 <Ionicons name="location-outline" size={20} color={colors.primary} />
-                <Text style={styles.contactValue}>{partner.address}</Text>
+                <Text style={styles.contactValue}>{displayContact.address}</Text>
               </View>
             ) : null}
             {partner.phone ? (
@@ -314,7 +460,7 @@ export default function PartnerDetailScreen() {
               onPress={() => setActiveOfferTab('cashback')}
             />
             <OfferTabButton
-              label="Cartes UP"
+              label="Bon d'achat"
               isActive={activeOfferTab === 'vouchers'}
               onPress={() => setActiveOfferTab('vouchers')}
             />
@@ -364,6 +510,7 @@ export default function PartnerDetailScreen() {
             <VoucherPanel
               accentColor={accentColor}
               partnerName={partner.name}
+              logoUrl={partner.logoUrl}
               cashbackRate={partner.permanentOffer.rate}
               onSeeDetails={() => navigation.navigate('OfferTemplate', { partnerId: partner.id, offerType: 'voucher' })}
             />
@@ -372,22 +519,26 @@ export default function PartnerDetailScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Localisation</Text>
-          <Text style={styles.cardValueSmall}>
-            {partner.city} • {partner.country}
-          </Text>
           <Text style={styles.cardHint}>Planifiez votre trajet en un geste.</Text>
-          <TouchableOpacity style={styles.mapButton} onPress={openDirections}>
-            <Ionicons name="navigate-outline" size={18} color={colors.white} />
+          <TouchableOpacity style={styles.mapButtonWrap} onPress={openDirections} activeOpacity={0.85}>
+            <LinearGradient
+              colors={[...CARD_GRADIENT_COLORS]}
+              locations={[...CARD_GRADIENT_LOCATIONS]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.mapButton}>
+              <Ionicons name="navigate-outline" size={18} color={colors.white} />
             <Text style={styles.mapButtonText}>Ouvrir l’itinéraire</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
-        {partner.websiteUrl ? (
+        {displayContact.websiteUrl ? (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Site internet</Text>
             <TouchableOpacity
               style={styles.websiteButton}
-              onPress={() => openLink(partner.websiteUrl)}
+              onPress={() => openLink(displayContact.websiteUrl)}
               accessibilityLabel="Voir le site internet">
               <Ionicons name="globe-outline" size={20} color={colors.primary} />
               <Text style={styles.websiteButtonText}>Voir le site internet</Text>
@@ -399,17 +550,17 @@ export default function PartnerDetailScreen() {
         <View style={styles.actionsCard}>
           <Text style={styles.cardLabel}>Actions rapides</Text>
           <View style={styles.actionsRow}>
-            <ActionButton
+            <SocialButton
               label="Instagram"
-              icon="instagram"
-              disabled={!partner.instagramUrl}
-              onPress={() => openLink(partner.instagramUrl)}
+              logo="instagram"
+              disabled={!displayContact.instagramUrl}
+              onPress={() => openLink(displayContact.instagramUrl)}
             />
-            <ActionButton
+            <SocialButton
               label="Facebook"
-              icon="facebook"
-              disabled={!partner.facebookUrl}
-              onPress={() => openLink(partner.facebookUrl)}
+              logo="facebook"
+              disabled={!displayContact.facebookUrl}
+              onPress={() => openLink(displayContact.facebookUrl)}
             />
           </View>
         </View>
@@ -430,21 +581,39 @@ export default function PartnerDetailScreen() {
   );
 }
 
-type ActionButtonProps = {
+type SocialButtonProps = {
   label: string;
-  icon: React.ComponentProps<typeof FontAwesome>['name'];
+  logo: 'instagram' | 'facebook';
   onPress: () => void;
   disabled?: boolean;
 };
 
-function ActionButton({ label, icon, onPress, disabled }: ActionButtonProps) {
+const INSTAGRAM_COLOR = '#E1306C';
+const FACEBOOK_COLOR = '#1877F2';
+
+function SocialButton({ label, logo, onPress, disabled }: SocialButtonProps) {
+  const brandColor = logo === 'instagram' ? INSTAGRAM_COLOR : FACEBOOK_COLOR;
+  const iconColor = disabled ? '#94A3B8' : brandColor;
+  const textColor = disabled ? undefined : brandColor;
+  const LogoComponent = logo === 'instagram' ? InstagramLogo : FacebookLogo;
   return (
     <TouchableOpacity
-      style={[styles.actionButton, disabled && styles.actionButtonDisabled]}
+      style={[
+        styles.actionButton,
+        disabled && styles.actionButtonDisabled,
+        !disabled && { backgroundColor: `${brandColor}14` },
+      ]}
       onPress={onPress}
       disabled={disabled}>
-      <FontAwesome name={icon} size={16} color={disabled ? '#94A3B8' : '#0F172A'} />
-      <Text style={[styles.actionButtonText, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
+      <LogoComponent size={20} color={iconColor} />
+      <Text
+        style={[
+          styles.actionButtonText,
+          disabled && styles.actionButtonTextDisabled,
+          !disabled && textColor && { color: textColor },
+        ]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -541,9 +710,23 @@ type OfferTabButtonProps = {
 function OfferTabButton({ label, isActive, onPress }: OfferTabButtonProps) {
   return (
     <TouchableOpacity
-      style={[styles.offerTabButton, isActive && styles.offerTabButtonActive]}
-      onPress={onPress}>
-      <Text style={[styles.offerTabButtonText, isActive && styles.offerTabButtonTextActive]}>{label}</Text>
+      style={[styles.offerTabButtonWrap, isActive && styles.offerTabButtonWrapActive]}
+      onPress={onPress}
+      activeOpacity={0.85}>
+      {isActive ? (
+        <LinearGradient
+          colors={[...CARD_GRADIENT_COLORS]}
+          locations={[...CARD_GRADIENT_LOCATIONS]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.offerTabButton}>
+          <Text style={styles.offerTabButtonTextActive}>{label}</Text>
+        </LinearGradient>
+      ) : (
+        <View style={styles.offerTabButton}>
+          <Text style={styles.offerTabButtonText}>{label}</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -551,11 +734,14 @@ function OfferTabButton({ label, isActive, onPress }: OfferTabButtonProps) {
 type VoucherPanelProps = {
   accentColor: string;
   partnerName: string;
+  logoUrl?: string | null;
   cashbackRate: number;
   onSeeDetails: () => void;
 };
 
-function VoucherPanel({ accentColor, partnerName, cashbackRate, onSeeDetails }: VoucherPanelProps) {
+function VoucherPanel({ accentColor, partnerName, logoUrl, cashbackRate, onSeeDetails }: VoucherPanelProps) {
+  const [logoError, setLogoError] = useState(false);
+  const showLogo = logoUrl && logoUrl.trim() !== '' && !logoError;
   const presetAmounts = [5, 20, 50, 100, 150];
   const [quantities, setQuantities] = useState<Record<number, number>>(
     presetAmounts.reduce((acc, value) => ({ ...acc, [value]: 0 }), {})
@@ -581,12 +767,29 @@ function VoucherPanel({ accentColor, partnerName, cashbackRate, onSeeDetails }: 
   return (
     <View style={styles.voucherPanel}>
       <LinearGradient
-        colors={[accentColor, `${accentColor}CC`]}
+        colors={[...CARD_GRADIENT_COLORS]}
+        locations={[...CARD_GRADIENT_LOCATIONS]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.giftCard}>
         <View style={styles.giftCardHeader}>
-          <Text style={styles.giftCardPartner}>{partnerName}</Text>
+          <View style={styles.giftCardLogoRow}>
+            <View style={styles.giftCardLogoWrap}>
+              {showLogo ? (
+                <Image
+                  source={{ uri: logoUrl! }}
+                  style={styles.giftCardLogo}
+                  resizeMode="cover"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <Text style={styles.giftCardLogoFallback} numberOfLines={1}>
+                  {partnerName.slice(0, 2).toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.giftCardPartner} numberOfLines={2}>{partnerName}</Text>
+          </View>
           <View style={styles.giftCardIcon}>
             <Ionicons name="card-outline" size={16} color="#FFFFFF" />
             <Text style={styles.giftCardIconText}>
@@ -653,17 +856,29 @@ function VoucherPanel({ accentColor, partnerName, cashbackRate, onSeeDetails }: 
       </View>
 
       <TouchableOpacity
-        style={[styles.purchaseButton, { backgroundColor: canPurchase ? accentColor : '#E2E8F0' }]}
+        style={[styles.purchaseButtonWrap, !canPurchase && styles.purchaseButtonWrapDisabled]}
         disabled={!canPurchase}
         onPress={() =>
           Alert.alert(
             'Bientôt disponible',
             'L’achat de bons d’achat sera bientôt disponible directement dans l’application.'
           )
-        }>
-        <Text style={[styles.purchaseButtonText, !canPurchase && { color: '#94A3B8' }]}>
-          Continuer
-        </Text>
+        }
+        activeOpacity={0.85}>
+        {canPurchase ? (
+          <LinearGradient
+            colors={[...CARD_GRADIENT_COLORS]}
+            locations={[...CARD_GRADIENT_LOCATIONS]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.purchaseButton}>
+            <Text style={styles.purchaseButtonText}>Continuer</Text>
+          </LinearGradient>
+        ) : (
+          <View style={[styles.purchaseButton, styles.purchaseButtonDisabled]}>
+            <Text style={[styles.purchaseButtonText, styles.purchaseButtonTextDisabled]}>Continuer</Text>
+          </View>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.howItWorksButton} onPress={onSeeDetails}>
@@ -706,14 +921,59 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  favoriteButton: {
+  favoriteButtonWrapper: {
     position: 'absolute',
     top: 24,
     right: 20,
     width: 42,
     height: 42,
+    minWidth: 42,
+    minHeight: 42,
+    maxWidth: 42,
+    maxHeight: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
+  },
+  favoriteButtonTouchable: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteButtonInner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 42,
+    height: 42,
+    minWidth: 42,
+    minHeight: 42,
+  },
+  favoriteHeartLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 42,
+    height: 42,
+    minWidth: 42,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteHeartLayerHidden: {
+    opacity: 0,
+    pointerEvents: 'none',
+  },
+  favoriteButton: {
+    width: 42,
+    height: 42,
+    minWidth: 42,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteHeartMask: {
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -750,20 +1010,43 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     textAlign: 'center',
   },
-  heroPepiteBadge: {
-    alignSelf: 'center',
-    marginTop: 10,
-    backgroundColor: '#FDF0FF',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+  heroBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 18,
   },
-  heroPepiteText: {
-    fontSize: 13,
+  heroBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: radius.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  heroBadgePepite: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  heroBadgeBoosted: {
+    backgroundColor: '#05A357',
+  },
+  heroBadgePopular: {
+    backgroundColor: '#EA580C',
+  },
+  heroBadgePillText: {
+    fontSize: 9,
     fontWeight: '700',
-    color: colors.primaryPurple,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: colors.textMain,
+  },
+  heroBadgePillTextBoosted: {
+    color: colors.white,
+  },
+  heroBadgePillTextPopular: {
+    color: colors.white,
   },
   heroDistance: {
     marginTop: 4,
@@ -887,14 +1170,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginBottom: 16,
   },
-  offerTabButton: {
+  offerTabButtonWrap: {
     flex: 1,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  offerTabButtonWrapActive: {
+    overflow: 'hidden',
+  },
+  offerTabButton: {
     paddingVertical: 8,
     borderRadius: 999,
     alignItems: 'center',
-  },
-  offerTabButtonActive: {
-    backgroundColor: '#FFFFFF',
   },
   offerTabButtonText: {
     fontSize: 13,
@@ -902,7 +1189,7 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
   offerTabButtonTextActive: {
-    color: '#0F172A',
+    color: '#FFFFFF',
   },
   voucherPanel: {
     gap: 12,
@@ -939,7 +1226,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginTop: 4,
+    flex: 1,
+    marginLeft: 12,
   },
   giftCardAmount: {
     fontSize: 32,
@@ -956,6 +1244,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  giftCardLogoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  giftCardLogoWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  giftCardLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  giftCardLogoFallback: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   giftCardIcon: {
     flexDirection: 'row',
@@ -1122,16 +1434,29 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     fontWeight: '600',
   },
-  purchaseButton: {
+  purchaseButtonWrap: {
     marginTop: 16,
     borderRadius: 16,
+    overflow: 'hidden',
+  },
+  purchaseButtonWrapDisabled: {
+    overflow: 'hidden',
+  },
+  purchaseButton: {
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  purchaseButtonDisabled: {
+    backgroundColor: '#E2E8F0',
   },
   purchaseButtonText: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  purchaseButtonTextDisabled: {
+    color: '#94A3B8',
   },
   howItWorksButton: {
     alignSelf: 'center',
@@ -1172,6 +1497,33 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 18,
   },
+  territorySelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+  },
+  territoryChipWrap: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  territoryChipWrapActive: {
+    overflow: 'hidden',
+  },
+  territoryChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: '#E5E7EB',
+  },
+  territoryChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMain,
+  },
+  territoryChipTextActive: {
+    color: colors.white,
+  },
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1184,13 +1536,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  mapButton: {
+  mapButtonWrap: {
     marginTop: 12,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  mapButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.primaryBlue,
     borderRadius: 999,
     paddingVertical: 12,
   },

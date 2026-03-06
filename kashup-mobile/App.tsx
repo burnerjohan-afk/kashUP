@@ -1,13 +1,18 @@
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
+
+import { navigationRef } from './navigation/navigationRef';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { colors } from './constants/theme';
+
+const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationsProvider } from './context/NotificationsContext';
-import MainStack from './navigation/MainStack';
+import RootNavigator from './navigation/RootNavigator';
 import { useAppSync } from './src/hooks/useAppSync';
 import {
   PersistQueryClientProvider,
@@ -71,14 +76,16 @@ function AppContent() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer theme={navTheme}>
-        <AuthProvider>
-          <NotificationsProvider>
-            <StatusBar style="dark" />
-            <MainStack />
-          </NotificationsProvider>
-        </AuthProvider>
-      </NavigationContainer>
+      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
+        <NavigationContainer ref={navigationRef} theme={navTheme}>
+          <AuthProvider>
+            <NotificationsProvider>
+              <StatusBar style="dark" />
+              <RootNavigator />
+            </NotificationsProvider>
+          </AuthProvider>
+        </NavigationContainer>
+      </StripeProvider>
     </SafeAreaProvider>
   );
 }

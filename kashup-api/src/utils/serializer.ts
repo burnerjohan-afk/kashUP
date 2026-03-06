@@ -193,9 +193,27 @@ export function serializePartner(req: Request, partner: any): any {
     serialized.categoryName = '';
   }
   
-  // S'assurer que territories est toujours un array (optimisé)
+  // S'assurer que territories est toujours un array (parser le JSON si c'est une chaîne)
   if (!Array.isArray(serialized.territories)) {
-    serialized.territories = serialized.territories ? [serialized.territories] : [];
+    if (typeof serialized.territories === 'string' && serialized.territories.trim()) {
+      try {
+        const parsed = JSON.parse(serialized.territories);
+        serialized.territories = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        serialized.territories = [serialized.territories];
+      }
+    } else {
+      serialized.territories = serialized.territories ? [serialized.territories] : [];
+    }
+  }
+
+  // Parser territoryDetails (adresses et réseaux par département) si c'est une chaîne JSON
+  if (typeof serialized.territoryDetails === 'string' && serialized.territoryDetails.trim()) {
+    try {
+      serialized.territoryDetails = JSON.parse(serialized.territoryDetails);
+    } catch {
+      serialized.territoryDetails = null;
+    }
   }
 
   // Garantir que les taux de cashback sont toujours présents pour l'app mobile (ne jamais les perdre)

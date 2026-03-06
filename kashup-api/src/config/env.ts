@@ -36,7 +36,8 @@ const envSchema = z.object({
       (val) => !val || val === '' || z.string().url().safeParse(val).success,
       { message: 'MOBILE_WEBHOOK_URL doit être une URL valide ou vide' }
     )
-    .transform((val) => val || '')
+    .transform((val) => val || ''),
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
 });
 
 const env = envSchema.parse(process.env);

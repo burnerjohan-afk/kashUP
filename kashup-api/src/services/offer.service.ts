@@ -175,4 +175,34 @@ export const updateOffer = async (id: string, input: Partial<OfferFormInput>, im
   return offer;
 };
 
+/**
+ * Enregistre l'utilisation d'une offre par un utilisateur (incrémente stockUsed).
+ * À appeler côté backend lorsqu'un paiement pour une offre du moment est confirmé
+ * (webhook Stripe, callback paiement, etc.) — le solde restant diminue alors automatiquement.
+ */
+export const useOffer = async (offerId: string) => {
+  const offer = await prisma.partnerOffer.findUnique({
+    where: { id: offerId },
+    include: { partner: { select: { id: true, name: true, logoUrl: true } } }
+  });
+
+  if (!offer) {
+    throw new AppError('Offre introuvable', 404);
+  }
+
+  const restantes = Math.max(0, (offer.stock ?? 0) - (offer.stockUsed ?? 0));
+  if (restantes <= 0) {
+    throw new AppError('Plus d\'offres disponibles pour cette offre', 400);
+  }
+
+  const updated = await prisma.partnerOffer.update({
+    where: { id: offerId },
+    data: { stockUsed: (offer.stockUsed ?? 0) + 1 },
+    include: { partner: { select: { id: true, name: true, logoUrl: true } } }
+  });
+
+  await emitOfferWebhook('offer.used', updated);
+  return updated;
+};
+
 

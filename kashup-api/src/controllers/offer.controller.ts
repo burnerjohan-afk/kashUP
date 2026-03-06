@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { createOffer, listCurrentOffers, listOffers, updateOffer } from '../services/offer.service';
+import { createOffer, listCurrentOffers, listOffers, updateOffer, useOffer } from '../services/offer.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
 import { processUploadedFile } from '../services/upload.service';
@@ -218,6 +218,12 @@ export const updateOfferHandler = asyncHandler(async (req: Request, res: Respons
       }
     );
   }
+});
+
+/** Enregistre qu'un utilisateur a validé / utilisé une offre (décrémente le stock restant). */
+export const useOfferHandler = asyncHandler(async (req: Request, res: Response) => {
+  const offer = await useOffer(req.params.id);
+  sendSuccess(res, offer);
 });
 
 

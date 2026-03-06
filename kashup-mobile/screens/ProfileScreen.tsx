@@ -132,7 +132,7 @@ export default function ProfileScreen() {
           style={styles.logoutRow}
           onPress={async () => {
             await logout();
-            navigation.navigate('Login');
+            // RootNavigator affiche automatiquement l'écran de connexion (AuthStack)
           }}>
           <View style={styles.rowLeft}>
             <Ionicons name="log-out-outline" size={20} color={colors.textMain} />

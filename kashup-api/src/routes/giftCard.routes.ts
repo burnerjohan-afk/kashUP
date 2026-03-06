@@ -6,6 +6,11 @@ import {
   getGiftCardOffers,
   getGiftCardsForUser,
   purchaseGiftCardHandler,
+  sendPredefinedGiftHandler,
+  sendBoxUpHandler,
+  sendSelectionUpHandler,
+  createPaymentIntentForGiftHandler,
+  confirmCardPaymentForGiftHandler,
   getGiftCardOrders,
   getGiftCardConfigHandler,
   updateGiftCardConfigHandler,
@@ -34,7 +39,7 @@ import {
 } from '../controllers/giftcard.controller';
 import { authMiddleware, requireRoles } from '../middlewares/auth';
 import { validateBody } from '../middlewares/validator';
-import { purchaseGiftCardSchema, giftCardConfigSchema, boxUpConfigSchema, giftCardAmountSchema } from '../schemas/giftCard.schema';
+import { purchaseGiftCardSchema, sendPredefinedGiftSchema, sendBoxUpSchema, sendSelectionUpSchema, createPaymentIntentForGiftSchema, confirmCardPaymentForGiftSchema, giftCardConfigSchema, boxUpConfigSchema, giftCardAmountSchema } from '../schemas/giftCard.schema';
 import { USER_ROLE } from '../types/domain';
 import { uploadFields, uploadSingle } from '../config/upload';
 
@@ -51,6 +56,13 @@ router.get('/cartes-up-libres/for-app', getCartesUpLibresForAppHandler);
 // Routes authentifiées (utilisateurs)
 router.get('/user', authMiddleware, getGiftCardsForUser);
 router.post('/purchase', authMiddleware, validateBody(purchaseGiftCardSchema), purchaseGiftCardHandler);
+router.post('/send-predefined', authMiddleware, validateBody(sendPredefinedGiftSchema), sendPredefinedGiftHandler);
+router.post('/send-box', authMiddleware, validateBody(sendBoxUpSchema), sendBoxUpHandler);
+router.post('/send-selection', authMiddleware, validateBody(sendSelectionUpSchema), sendSelectionUpHandler);
+
+// Paiement par carte (Apple Pay / Google Pay via Stripe)
+router.post('/create-payment-intent', authMiddleware, validateBody(createPaymentIntentForGiftSchema), createPaymentIntentForGiftHandler);
+router.post('/confirm-card-payment', authMiddleware, validateBody(confirmCardPaymentForGiftSchema), confirmCardPaymentForGiftHandler);
 
 // Routes admin
 router.get('/amounts', authMiddleware, requireRoles(USER_ROLE.admin), getGiftCardAmountsHandler);

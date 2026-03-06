@@ -2,93 +2,94 @@
  * Client API centralisé pour communiquer avec kashup-api
  * Détection automatique de l'IP du serveur Expo via Constants
  * Gère l'authentification JWT, le refresh token automatique, et le format StandardResponse
+ * Stockage : SecureStore + fallback AsyncStorage (Expo Go / certains appareils)
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { getApiBaseUrl } from '../config/api';
 import { ApiError, StandardResponse, unwrapStandardResponse } from '../types/api';
 
-// Clés de stockage (SecureStore pour la sécurité)
 const STORAGE_KEYS = {
   ACCESS_TOKEN: 'kashup_access_token',
   REFRESH_TOKEN: 'kashup_refresh_token',
 } as const;
 
-// Base URL API (détectée automatiquement)
 const API_BASE_URL = getApiBaseUrl();
-
-// Instance axios
 let axiosInstance: AxiosInstance | null = null;
 
-/**
- * Récupère le token d'accès depuis SecureStore (sécurisé)
- */
+/** Appelé quand la session est invalidée (401 + clear token). Permet à AuthContext de mettre user à null. */
+let onSessionInvalidated: (() => void) | null = null;
+export function setOnSessionInvalidated(callback: (() => void) | null): void {
+  onSessionInvalidated = callback;
+}
+
+async function getItemSecure(key: string): Promise<string | null> {
+  try {
+    let value = await SecureStore.getItemAsync(key);
+    if (value != null && value.trim() !== '') return value;
+    value = await AsyncStorage.getItem(key);
+    if (value != null && value.trim() !== '') {
+      await SecureStore.setItemAsync(key, value);
+      return value;
+    }
+    return null;
+  } catch (e) {
+    if (__DEV__) console.warn('[api] getItem', key, e);
+    return null;
+  }
+}
+
+async function setItemSecure(key: string, value: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(key, value);
+    await AsyncStorage.setItem(key, value);
+  } catch (e) {
+    if (__DEV__) console.warn('[api] setItem', key, e);
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch (e2) {
+      throw e;
+    }
+  }
+}
+
+async function removeItemSecure(key: string): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(key);
+    await AsyncStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 export async function getAuthToken(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
-  } catch (error) {
-    console.error('[api] Erreur lors de la récupération du token:', error);
-    return null;
-  }
+  return getItemSecure(STORAGE_KEYS.ACCESS_TOKEN);
 }
 
-/**
- * Stocke le token d'accès dans SecureStore (sécurisé)
- */
 export async function setAuthToken(token: string): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, token);
-  } catch (error) {
-    console.error('[api] Erreur lors du stockage du token:', error);
-    throw error;
-  }
+  await setItemSecure(STORAGE_KEYS.ACCESS_TOKEN, token);
 }
 
-/**
- * Récupère le refresh token depuis SecureStore (sécurisé)
- */
 export async function getRefreshToken(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
-  } catch (error) {
-    console.error('[api] Erreur lors de la récupération du refresh token:', error);
-    return null;
-  }
+  return getItemSecure(STORAGE_KEYS.REFRESH_TOKEN);
 }
 
-/**
- * Stocke le refresh token dans SecureStore (sécurisé)
- */
 export async function setRefreshToken(token: string): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, token);
-  } catch (error) {
-    console.error('[api] Erreur lors du stockage du refresh token:', error);
-    throw error;
-  }
+  await setItemSecure(STORAGE_KEYS.REFRESH_TOKEN, token);
 }
 
-/**
- * Indique si un refresh token est disponible (utilisateur susceptible d'être authentifié)
- */
 export async function hasRefreshToken(): Promise<boolean> {
   const token = await getRefreshToken();
   return token != null && token.trim() !== '';
 }
 
-/**
- * Supprime les tokens d'authentification
- */
 export async function clearAuthToken(): Promise<void> {
-  try {
-    await Promise.all([
-      SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
-      SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN),
-    ]);
-  } catch (error) {
-    console.error('[api] Erreur lors de la suppression des tokens:', error);
-  }
+  await Promise.all([
+    removeItemSecure(STORAGE_KEYS.ACCESS_TOKEN),
+    removeItemSecure(STORAGE_KEYS.REFRESH_TOKEN),
+  ]);
 }
 
 /**
@@ -112,9 +113,11 @@ export async function refreshToken(): Promise<void> {
         accessToken: string;
         refreshToken: string;
       };
-    }>>(refreshUrl, {
-      refreshToken: refreshTokenValue,
-    });
+    }>>(
+      refreshUrl,
+      { refreshToken: refreshTokenValue },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
 
     const data = unwrapStandardResponse(response.data);
     
@@ -155,10 +158,21 @@ function getApiClient(): AxiosInstance {
       },
     });
 
-    // Intercepteur de requête : ajoute le token d'authentification
+    // Intercepteur de requête : ajoute le token (refresh proactif si accès manquant mais refresh dispo)
     axiosInstance.interceptors.request.use(
       async (config) => {
-        const token = await getAuthToken();
+        let token = await getAuthToken();
+        if (!token?.trim()) {
+          const refreshTokenValue = await getRefreshToken();
+          if (refreshTokenValue?.trim()) {
+            try {
+              await refreshToken();
+              token = await getAuthToken();
+            } catch {
+              // Laisser partir la requête sans token ; le backend renverra 401 puis l’intercepteur réponse gèrera
+            }
+          }
+        }
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -179,6 +193,25 @@ function getApiClient(): AxiosInstance {
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
 
+          const refreshTokenValue = await getRefreshToken();
+          if (!refreshTokenValue) {
+            // Pas de refresh token (non connecté ou session expirée) : ne pas appeler refreshToken()
+            // pour éviter le message "Aucun refresh token disponible"
+            await clearAuthToken();
+            onSessionInvalidated?.();
+            return Promise.reject(
+              Object.assign(error, {
+                response: {
+                  ...error.response,
+                  data: {
+                    ...(error.response?.data as object),
+                    message: 'Session expirée ou non connecté',
+                  },
+                },
+              })
+            );
+          }
+
           try {
             await refreshToken();
             const token = await getAuthToken();
@@ -189,6 +222,7 @@ function getApiClient(): AxiosInstance {
           } catch (refreshError) {
             // Le refresh a échoué, rediriger vers login
             await clearAuthToken();
+            onSessionInvalidated?.();
             return Promise.reject(refreshError);
           }
         }
@@ -259,30 +293,36 @@ export async function apiClient<T>(
     if (axios.isAxiosError(error)) {
       const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
       const fullUrl = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+      const status = error.response?.status;
+      const is401 = status === 401;
 
       const requestDuration = Date.now() - requestStartTime;
       const isNetworkError = error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND';
       const isConnectionError = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
-      
+
+      // 4xx (401, 400, etc.) → console.warn pour ne pas déclencher l'écran d'erreur rouge (l'utilisateur voit l'alerte avec le message)
+      const is4xx = status != null && status >= 400 && status < 500;
+      const logFn = __DEV__ && (is401 || is4xx) ? console.warn : (__DEV__ ? console.error : () => {});
       if (__DEV__) {
-        console.error(`[API] ❌ ${method} ${endpoint} → Erreur`);
-        console.error(`[API] 🔗 URL tentée: ${fullUrl}`);
-        console.error(`[API] 📊 Status: ${error.response?.status || 'N/A'}`);
-        console.error(`[API] ⚠️  Type: ${isTimeout ? 'TIMEOUT' : isNetworkError ? 'RÉSEAU' : 'AUTRE'}`);
-        console.error(`[API] 💬 Message: ${error.message}`);
-        console.error(`[API] ⏱️  Durée avant erreur: ${requestDuration}ms`);
-        console.error(`[API] 🔍 Code erreur: ${error.code || 'N/A'}`);
-        
+        logFn(`[API] ${is401 ? '⚠️' : '❌'} ${method} ${endpoint} → ${is401 ? '401 Non autorisé' : 'Erreur'}`);
+        logFn(`[API] 🔗 URL tentée: ${fullUrl}`);
+        logFn(`[API] 📊 Status: ${status || 'N/A'}`);
+        if (!is401) {
+          logFn(`[API] ⚠️  Type: ${isTimeout ? 'TIMEOUT' : isNetworkError ? 'RÉSEAU' : 'AUTRE'}`);
+          logFn(`[API] 💬 Message: ${error.message}`);
+          logFn(`[API] ⏱️  Durée avant erreur: ${requestDuration}ms`);
+          logFn(`[API] 🔍 Code erreur: ${error.code || 'N/A'}`);
+        }
         if (isTimeout) {
-          console.error(`[API] ⚠️  TIMEOUT: Le serveur n'a pas répondu dans les 30 secondes`);
-          console.error(`[API] 💡 Vérifiez que le serveur backend est démarré sur ${API_BASE_URL}`);
+          logFn(`[API] ⚠️  TIMEOUT: Le serveur n'a pas répondu dans les 30 secondes`);
+          logFn(`[API] 💡 Vérifiez que le serveur backend est démarré sur ${API_BASE_URL}`);
         }
         if (isNetworkError) {
-          console.error(`[API] ⚠️  ERREUR RÉSEAU: Impossible de se connecter au serveur`);
-          console.error(`[API] 💡 Vérifiez que le serveur est démarré et accessible`);
+          logFn(`[API] ⚠️  ERREUR RÉSEAU: Impossible de se connecter au serveur`);
+          logFn(`[API] 💡 Vérifiez que le serveur est démarré et accessible`);
         }
         if (isConnectionError && !isTimeout) {
-          console.error(`[API] ⚠️  CONNEXION INTERROMPUE: La connexion a été interrompue`);
+          logFn(`[API] ⚠️  CONNEXION INTERROMPUE: La connexion a été interrompue`);
         }
       }
 
@@ -307,13 +347,17 @@ export async function apiClient<T>(
       };
     }
 
-    // Erreur inconnue
-    if (__DEV__) {
+    // Erreur inconnue (ne pas afficher en rouge si c'est "aucun refresh token" — utilisateur non connecté)
+    const isNoRefreshToken =
+      error instanceof ApiError &&
+      (error.statusCode === 401 || /refresh token/i.test(error.message));
+    if (__DEV__ && !isNoRefreshToken) {
       console.error(`[API] ❌ Erreur inconnue:`, error);
     }
 
+    const statusCode = error instanceof ApiError ? error.statusCode : 500;
     return {
-      statusCode: 500,
+      statusCode,
       success: false,
       message: error instanceof Error ? error.message : 'Une erreur inconnue est survenue',
       data: null,

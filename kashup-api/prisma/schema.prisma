@@ -11,19 +11,27 @@ model User {
   id                String                  @id @default(cuid())
   email             String                  @unique
   hashedPassword    String
+  appleId           String?                 @unique  // Sign in with Apple
+  googleId          String?                 @unique  // Sign in with Google
   firstName         String
   lastName          String
   phone             String?
   role              String                  @default("user")
   territory         String?                 @default("Martinique")
+  gender            String?                // M | F | other — collecté à l'inscription
+  ageRange          String?                // ex. 18-25, 26-35, 36-50, 50+ — collecté à l'inscription
+  partnerId         String?                @unique  // Si role=partner, lien vers le partenaire
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
+  partner           Partner?               @relation(fields: [partnerId], references: [id])
   bankAccessLogs    BankAccessLog[]
   bankConsents      BankConsent[]
   challengeProgress ChallengeProgress[]
   donations         DonationImpact[]
   favorites         FavoritePartner[]
   giftCardPurchases GiftCardPurchase[]      @relation("GiftCardPurchaser")
+  receivedPredefinedGifts PredefinedGiftSend[] @relation("PredefinedGiftSendBeneficiary")
+  sentPredefinedGifts     PredefinedGiftSend[] @relation("PredefinedGiftSendSender")
   lotteryEntries    LotteryEntry[]
   notifications     Notification[]
   pointsHistory     Points[]
@@ -65,10 +73,11 @@ model Partner {
   phone             String?
   openingHours      String?   // Horaires d'ouverture/fermeture (ex: "Lun-Ven 9h-18h" ou texte libre)
   openingDays       String?  // Jours d'ouverture (JSON array: ["monday","tuesday",...])
-  address           String?   // Adresse complète du partenaire
+  address           String?   // Adresse complète du partenaire (fallback si pas de territoryDetails)
   websiteUrl        String?
   facebookUrl       String?
   instagramUrl      String?
+  territoryDetails  String?  // JSON: { "Martinique": { address, websiteUrl, facebookUrl, instagramUrl }, "Guadeloupe": {...}, "Guyane": {...} }
   tauxCashbackBase  Float
   discoveryCashbackRate Float? // Taux de cashback de bienvenue
   permanentCashbackRate Float? // Taux de cashback permanent
@@ -81,6 +90,7 @@ model Partner {
   latitude          Float?
   longitude         Float?
   boostable         Boolean           @default(true)
+  giftCardEnabled   Boolean          @default(false) // Activer les cartes cadeaux / bons d'achat
   categoryId        String
   status            String?           @default("active") // Statut du partenaire (active, inactive, pending, etc.)
   additionalInfo    String? // Informations complémentaires (JSON ou texte)
@@ -101,6 +111,7 @@ model Partner {
   documents         PartnerDocument[]
   offers            PartnerOffer[]
   transactions      Transaction[]
+  users             User[]                 // Comptes espace partenaire (role=partner)
 
   @@index([categoryId])
 }
@@ -345,6 +356,7 @@ model GiftBox {
   imageUrl     String?
   cashbackInfo String?
   value        Float         @default(0)
+  cashbackRate Float?        // Taux de cashback (%) à l'achat de la box
   active       Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -378,6 +390,7 @@ model CarteUpLibreConfig {
   partenairesEligibles String   // JSON array of partner IDs
   conditions           String?
   commentCaMarche      String?
+  cashbackRate         Float?   // Taux de cashback (%) à l'achat
   status               String   @default("active") // active | inactive
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -395,6 +408,7 @@ model CarteUpPredefinie {
   dureeValiditeJours Int?
   conditions         String?
   commentCaMarche    String?
+  cashbackRate       Float?    // Taux de cashback (%) à l'achat
   status             String    @default("active")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -413,6 +427,24 @@ model PredefinedGift {
   deletedAt DateTime?
 
   @@index([updatedAt])
+}
+
+// Cadeau prédefini ou Carte Sélection UP envoyé (notification in-app ou par email)
+model PredefinedGiftSend {
+  id                 String   @id @default(cuid())
+  offerId            String   @default("") // id PredefinedGift, CarteUpPredefinie, ou partnerId pour selection_up
+  offerType          String   // 'predefined' | 'carte_up' | 'box_up' | 'selection_up'
+  senderId           String
+  beneficiaryUserId  String?  // null si envoi par email à un non-inscrit
+  beneficiaryEmail   String
+  message            String?
+  amount             Float
+  offerTitle         String
+  createdAt          DateTime @default(now())
+  sender             User     @relation("PredefinedGiftSendSender", fields: [senderId], references: [id])
+  beneficiary        User?    @relation("PredefinedGiftSendBeneficiary", fields: [beneficiaryUserId], references: [id])
+
+  @@index([beneficiaryUserId])
 }
 
 model FavoritePartner {

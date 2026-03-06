@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import * as authService from '../src/services/auth';
+import { getAuthToken, clearAuthToken, setOnSessionInvalidated } from '../src/services/api';
+import { ApiError } from '../src/types/api';
 
 type ProviderType = 'email' | 'apple' | 'google';
 
@@ -8,8 +11,6 @@ export type AuthUser = {
   lastName?: string;
   email: string;
   provider: ProviderType;
-  // ⚠️ RGPD: Ne jamais stocker le mot de passe côté client
-  // Le mot de passe n'est jamais stocké, uniquement les tokens JWT
 };
 
 type SignUpPayload = {
@@ -25,22 +26,20 @@ type AuthContextValue = {
   signUp: (payload: SignUpPayload) => Promise<AuthUser>;
   login: (email: string, password: string) => Promise<AuthUser>;
   loginWithApple: () => Promise<AuthUser>;
-  loginWithGoogle: () => Promise<AuthUser>;
+  /** idToken obtenu côté client (ex. via useIdTokenAuthRequest) */
+  loginWithGoogle: (idToken: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
-const STORAGE_KEY = 'kashup-auth-user';
-const memoryStorage: Record<string, string | undefined> = {};
-
-const storage = {
-  getItem: async (key: string) => memoryStorage[key] ?? null,
-  setItem: async (key: string, value: string) => {
-    memoryStorage[key] = value;
-  },
-  removeItem: async (key: string) => {
-    delete memoryStorage[key];
-  },
-};
+function mapApiUserToAuthUser(apiUser: authService.User, provider: ProviderType): AuthUser {
+  return {
+    id: apiUser.id,
+    email: apiUser.email,
+    firstName: apiUser.firstName,
+    lastName: apiUser.lastName,
+    provider,
+  };
+}
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -51,24 +50,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const stored = await storage.getItem(STORAGE_KEY);
-        // Vérifier que la session existe
-        if (!stored) {
+        const token = await getAuthToken();
+        if (!token?.trim()) {
+          setUser(null);
           setLoading(false);
           return;
         }
-        // Sécuriser le parsing JSON
-        try {
-          const parsed = JSON.parse(stored);
-          setUser(parsed);
-        } catch (parseError) {
-          // Session invalide (JSON corrompu)
-          await storage.removeItem(STORAGE_KEY);
-          throw new Error('Session invalide. Merci de vous reconnecter.');
+        const apiUser = await authService.getCurrentUser();
+        setUser(mapApiUserToAuthUser(apiUser, 'email'));
+      } catch (err) {
+        // Ne supprimer le token que si la session est vraiment invalide (401), pas sur erreur réseau / 500
+        const is401 =
+          err instanceof ApiError && err.statusCode === 401;
+        if (is401) {
+          await clearAuthToken();
         }
-      } catch (error) {
-        // Erreur lors de la restauration de session
-        console.error('[AuthContext] Erreur restauration session:', error);
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -76,86 +73,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUser();
   }, []);
 
-  const persistUser = async (next: AuthUser | null) => {
-    if (next) {
-      await storage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } else {
-      await storage.removeItem(STORAGE_KEY);
-    }
-  };
+  // Quand l'API invalide la session (401 + clear token), synchroniser l'état pour afficher l'écran de connexion
+  useEffect(() => {
+    setOnSessionInvalidated(() => setUser(null));
+    return () => setOnSessionInvalidated(null);
+  }, []);
 
   const signUp = async (payload: SignUpPayload) => {
-    // ⚠️ RGPD: Le mot de passe n'est jamais stocké côté client
-    // Il est envoyé à l'API qui retourne un token JWT
-    const defaultFirstName = payload.firstName ?? payload.email.split('@')[0] ?? 'Utilisateur';
-    const next: AuthUser = {
-      id: `user-${Date.now()}`,
-      firstName: defaultFirstName,
-      lastName: payload.lastName ?? 'KashUP',
-      email: payload.email.toLowerCase(),
-      provider: 'email',
-    };
+    const firstName = payload.firstName ?? payload.email.split('@')[0] ?? 'Utilisateur';
+    const lastName = payload.lastName ?? 'KashUP';
+    const result = await authService.signup({
+      email: payload.email,
+      password: payload.password,
+      firstName,
+      lastName,
+    });
+    const next = mapApiUserToAuthUser(result.user, 'email');
     setUser(next);
-    await persistUser(next);
     return next;
   };
 
   const login = async (email: string, password: string) => {
-    // ⚠️ RGPD: Le mot de passe n'est jamais stocké côté client
-    // L'authentification se fait via l'API qui retourne un token JWT
-    // Cette fonction devrait appeler l'API d'authentification
-    // Pour l'instant, on vérifie juste si un utilisateur existe en mémoire
-    const stored = await storage.getItem(STORAGE_KEY);
-    // Vérifier que la session existe
-    if (!stored) {
-      throw new Error('Aucun compte enregistré. Inscrivez-vous d\'abord.');
-    }
-    // Sécuriser le parsing JSON
-    let parsed: AuthUser;
-    try {
-      parsed = JSON.parse(stored);
-    } catch (parseError) {
-      // Session invalide (JSON corrompu)
-      await storage.removeItem(STORAGE_KEY);
-      throw new Error('Session invalide. Merci de vous reconnecter.');
-    }
-    if (parsed.email !== email.toLowerCase()) {
-      throw new Error('Identifiants incorrects.');
-    }
-    // Le mot de passe est vérifié côté serveur via l'API
-    setUser(parsed);
-    return parsed;
-  };
-
-  const loginWithApple = async () => {
-    const next: AuthUser = {
-      id: `apple-${Date.now()}`,
-      firstName: 'Utilisateur',
-      lastName: 'Apple',
-      email: `apple${Date.now()}@example.com`,
-      provider: 'apple',
-    };
+    const result = await authService.login({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    const next = mapApiUserToAuthUser(result.user, 'email');
     setUser(next);
-    await persistUser(next);
     return next;
   };
 
-  const loginWithGoogle = async () => {
-    const next: AuthUser = {
-      id: `google-${Date.now()}`,
-      firstName: 'Utilisateur',
-      lastName: 'Google',
-      email: `google${Date.now()}@example.com`,
-      provider: 'google',
-    };
+  const loginWithApple = async () => {
+    const result = await authService.loginWithApple();
+    const next = mapApiUserToAuthUser(result.user, 'apple');
     setUser(next);
-    await persistUser(next);
+    return next;
+  };
+
+  const loginWithGoogle = async (idToken: string) => {
+    const result = await authService.loginWithGoogle(idToken);
+    const next = mapApiUserToAuthUser(result.user, 'google');
+    setUser(next);
     return next;
   };
 
   const logout = async () => {
+    await authService.logout();
     setUser(null);
-    await persistUser(null);
   };
 
   const value = useMemo(

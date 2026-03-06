@@ -186,6 +186,17 @@ export const formatPartnerResponse = (partner: any) => {
     openingHours: formatted.openingHours || null,
     openingDays: openingDaysParsed,
     address: formatted.address || null,
+    territoryDetails: (() => {
+      const raw = formatted.territoryDetails;
+      if (!raw) return null;
+      if (typeof raw === 'object' && raw !== null) return raw;
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return typeof parsed === 'object' && parsed !== null ? parsed : null;
+      } catch {
+        return null;
+      }
+    })(),
     category: formatted.category ? {
       id: formatted.category.id,
       name: formatted.category.name
@@ -209,6 +220,7 @@ export const formatPartnerResponse = (partner: any) => {
     latitude: formatted.latitude || null,
     longitude: formatted.longitude || null,
     boostable: formatted.boostable ?? true,
+    giftCardEnabled: formatted.giftCardEnabled ?? false,
     status: formatted.status || 'active',
     additionalInfo: formatted.additionalInfo || null,
     affiliations: formatted.affiliations || [],
@@ -357,6 +369,9 @@ export const createPartner = async (input: CreatePartnerInput) => {
         websiteUrl: input.websiteUrl ?? null,
         facebookUrl: input.facebookUrl ?? null,
         instagramUrl: input.instagramUrl ?? null,
+        territoryDetails: input.territoryDetails != null
+          ? (typeof input.territoryDetails === 'string' ? input.territoryDetails : JSON.stringify(input.territoryDetails))
+          : null,
         tauxCashbackBase: input.tauxCashbackBase,
         discoveryCashbackRate: input.discoveryCashbackRate ?? null,
         permanentCashbackRate: input.permanentCashbackRate ?? null,
@@ -369,6 +384,7 @@ export const createPartner = async (input: CreatePartnerInput) => {
         latitude: input.latitude ?? null,
         longitude: input.longitude ?? null,
         boostable: input.boostable ?? true,
+        giftCardEnabled: input.giftCardEnabled ?? false,
         categoryId: input.categoryId,
         status: input.status ?? 'active',
         additionalInfo: input.additionalInfo ? (typeof input.additionalInfo === 'string' ? input.additionalInfo : JSON.stringify(input.additionalInfo)) : null,
@@ -476,6 +492,9 @@ export const updatePartner = async (id: string, input: UpdatePartnerInput) => {
     websiteUrl: input.websiteUrl ?? undefined,
     facebookUrl: input.facebookUrl ?? undefined,
     instagramUrl: input.instagramUrl ?? undefined,
+    territoryDetails: input.territoryDetails !== undefined
+      ? (typeof input.territoryDetails === 'string' ? input.territoryDetails : JSON.stringify(input.territoryDetails))
+      : undefined,
     tauxCashbackBase: input.tauxCashbackBase ?? undefined,
     discoveryCashbackRate: input.discoveryCashbackRate !== undefined ? (input.discoveryCashbackRate ?? null) : undefined,
     permanentCashbackRate: input.permanentCashbackRate !== undefined ? (input.permanentCashbackRate ?? null) : undefined,
@@ -488,6 +507,7 @@ export const updatePartner = async (id: string, input: UpdatePartnerInput) => {
     latitude: input.latitude ?? undefined,
     longitude: input.longitude ?? undefined,
     boostable: input.boostable ?? undefined,
+    giftCardEnabled: input.giftCardEnabled ?? undefined,
     categoryId: input.categoryId ?? undefined,
     status: input.status !== undefined ? (input.status || null) : undefined,
     additionalInfo: input.additionalInfo !== undefined ? (input.additionalInfo ? (typeof input.additionalInfo === 'string' ? input.additionalInfo : JSON.stringify(input.additionalInfo)) : null) : undefined,
@@ -642,6 +662,157 @@ export const getPartnerStatistics = async (id: string) => {
       transactionGrowth: Number(transactionGrowth.toFixed(2)),
       averageBasketGrowth: Number(averageBasketGrowth.toFixed(2))
     }
+  };
+};
+
+/** Filtres pour le dashboard partenaire */
+export type PartnerDashboardFilters = {
+  groupBy?: 'day' | 'month';
+  from?: string; // YYYY-MM-DD
+  to?: string;   // YYYY-MM-DD
+};
+
+/** Stats dashboard partenaire : CA, utilisateurs, par jour/mois, par genre, par tranche d'âge */
+export const getPartnerDashboardStats = async (partnerId: string, filters: PartnerDashboardFilters = {}) => {
+  await getPartner(partnerId);
+  const { groupBy = 'month', from, to } = filters;
+  const now = new Date();
+  const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 2, 1); // 2 mois en arrière
+  const fromDate = from ? new Date(from + 'T00:00:00') : defaultFrom;
+  const toDate = to ? new Date(to + 'T23:59:59') : now;
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      partnerId,
+      status: 'confirmed',
+      transactionDate: { gte: fromDate, lte: toDate }
+    },
+    include: {
+      user: {
+        select: { id: true, gender: true, ageRange: true }
+      }
+    },
+    orderBy: { transactionDate: 'asc' }
+  });
+
+  const uniqueUserIds = new Set(transactions.map((t) => t.userId));
+  const totalRevenue = transactions.reduce((s, t) => s + t.amount, 0);
+  const totalCashback = transactions.reduce((s, t) => s + t.cashbackEarned, 0);
+
+  // Séries par jour ou par mois
+  const seriesMap = new Map<string, { count: number; revenue: number; users: Set<string> }>();
+  const keyFormat = groupBy === 'day' ? (d: Date) => d.toISOString().slice(0, 10) : (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  for (const t of transactions) {
+    const key = keyFormat(t.transactionDate);
+    const cur = seriesMap.get(key) ?? { count: 0, revenue: 0, users: new Set<string>() };
+    cur.count += 1;
+    cur.revenue += t.amount;
+    cur.users.add(t.userId);
+    seriesMap.set(key, cur);
+  }
+  const series = Array.from(seriesMap.entries())
+    .map(([period, v]) => ({ period, transactionCount: v.count, revenue: Math.round(v.revenue * 100) / 100, uniqueUsers: v.users.size }))
+    .sort((a, b) => a.period.localeCompare(b.period));
+
+  // Par genre
+  const byGender: Record<string, { transactionCount: number; revenue: number; uniqueUsers: Set<string> }> = { M: { transactionCount: 0, revenue: 0, uniqueUsers: new Set() }, F: { transactionCount: 0, revenue: 0, uniqueUsers: new Set() }, other: { transactionCount: 0, revenue: 0, uniqueUsers: new Set() } };
+  for (const t of transactions) {
+    const g = (t.user?.gender && ['M', 'F', 'other'].includes(t.user.gender) ? t.user.gender : 'other') as 'M' | 'F' | 'other';
+    byGender[g].transactionCount += 1;
+    byGender[g].revenue += t.amount;
+    byGender[g].uniqueUsers.add(t.userId);
+  }
+  const byGenderFormatted = {
+    M: { transactionCount: byGender.M.transactionCount, revenue: Math.round(byGender.M.revenue * 100) / 100, uniqueUsers: byGender.M.uniqueUsers.size },
+    F: { transactionCount: byGender.F.transactionCount, revenue: Math.round(byGender.F.revenue * 100) / 100, uniqueUsers: byGender.F.uniqueUsers.size },
+    other: { transactionCount: byGender.other.transactionCount, revenue: Math.round(byGender.other.revenue * 100) / 100, uniqueUsers: byGender.other.uniqueUsers.size }
+  };
+
+  // Par tranche d'âge
+  const ageRanges = ['18-25', '26-35', '36-50', '50+'];
+  const byAgeRange: Record<string, { transactionCount: number; revenue: number; uniqueUsers: number }> = {};
+  for (const ar of ageRanges) byAgeRange[ar] = { transactionCount: 0, revenue: 0, uniqueUsers: 0 };
+  const ageRangeUsers: Record<string, Set<string>> = {};
+  for (const ar of ageRanges) ageRangeUsers[ar] = new Set<string>();
+  for (const t of transactions) {
+    const ar = t.user?.ageRange && ageRanges.includes(t.user.ageRange) ? t.user.ageRange : 'non_renseigne';
+    if (!byAgeRange[ar]) {
+      byAgeRange[ar] = { transactionCount: 0, revenue: 0, uniqueUsers: 0 };
+      ageRangeUsers[ar] = new Set<string>();
+    }
+    byAgeRange[ar].transactionCount += 1;
+    byAgeRange[ar].revenue += t.amount;
+    ageRangeUsers[ar].add(t.userId);
+  }
+  for (const k of Object.keys(byAgeRange)) {
+    byAgeRange[k].revenue = Math.round(byAgeRange[k].revenue * 100) / 100;
+    byAgeRange[k].uniqueUsers = ageRangeUsers[k]?.size ?? 0;
+  }
+
+  // Par jour de la semaine (0 = dimanche, 1 = lundi, ... 6 = samedi) et par genre
+  const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  const byDayOfWeek: Record<number, { M: number; F: number; other: number; total: number }> = {};
+  for (let d = 0; d <= 6; d++) {
+    byDayOfWeek[d] = { M: 0, F: 0, other: 0, total: 0 };
+  }
+  for (const t of transactions) {
+    const day = t.transactionDate.getDay();
+    const g = (t.user?.gender && ['M', 'F', 'other'].includes(t.user.gender) ? t.user.gender : 'other') as 'M' | 'F' | 'other';
+    byDayOfWeek[day][g] += 1;
+    byDayOfWeek[day].total += 1;
+  }
+
+  // Par heure (0-23) et par genre
+  const byHour: Record<number, { M: number; F: number; other: number; total: number }> = {};
+  for (let h = 0; h <= 23; h++) {
+    byHour[h] = { M: 0, F: 0, other: 0, total: 0 };
+  }
+  for (const t of transactions) {
+    const h = t.transactionDate.getHours();
+    const g = (t.user?.gender && ['M', 'F', 'other'].includes(t.user.gender) ? t.user.gender : 'other') as 'M' | 'F' | 'other';
+    byHour[h][g] += 1;
+    byHour[h].total += 1;
+  }
+
+  // Top créneaux (jour + heure + genre) triés par nombre de transactions
+  const slotMap = new Map<string, { dayOfWeek: number; hour: number; gender: string; count: number; revenue: number }>();
+  for (const t of transactions) {
+    const day = t.transactionDate.getDay();
+    const hour = t.transactionDate.getHours();
+    const g = (t.user?.gender && ['M', 'F', 'other'].includes(t.user.gender) ? t.user.gender : 'other') as string;
+    const key = `${day}-${hour}-${g}`;
+    const cur = slotMap.get(key) ?? { dayOfWeek: day, hour, gender: g, count: 0, revenue: 0 };
+    cur.count += 1;
+    cur.revenue += t.amount;
+    slotMap.set(key, cur);
+  }
+  const topSlotsByGender = Array.from(slotMap.entries())
+    .map(([, v]) => ({
+      dayOfWeek: v.dayOfWeek,
+      dayLabel: DAY_LABELS[v.dayOfWeek],
+      hour: v.hour,
+      gender: v.gender,
+      transactionCount: v.count,
+      revenue: Math.round(v.revenue * 100) / 100
+    }))
+    .sort((a, b) => b.transactionCount - a.transactionCount)
+    .slice(0, 20);
+
+  return {
+    summary: {
+      uniqueUsers: uniqueUserIds.size,
+      totalTransactions: transactions.length,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalCashback: Math.round(totalCashback * 100) / 100,
+      averageBasket: transactions.length ? Math.round((totalRevenue / transactions.length) * 100) / 100 : 0
+    },
+    groupBy,
+    series,
+    byGender: byGenderFormatted,
+    byAgeRange,
+    byDayOfWeek: Object.entries(byDayOfWeek).map(([day, v]) => ({ day: Number(day), dayLabel: DAY_LABELS[Number(day)], ...v })),
+    byHour: Object.entries(byHour).map(([hour, v]) => ({ hour: Number(hour), ...v })),
+    topSlotsByGender
   };
 };
 

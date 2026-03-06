@@ -45,6 +45,10 @@ const formatDate = (value: string) =>
 
 const formatPointsValue = (points: number) => points.toLocaleString('fr-FR');
 
+/** Même dégradé que la carte de la page d'accueil */
+const REWARDS_CARD_GRADIENT = ['#034d35', '#047857', '#059669', '#047857', '#065f46'] as const;
+const REWARDS_CARD_GRADIENT_LOCATIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
 export default function RewardsScreen() {
@@ -62,10 +66,12 @@ export default function RewardsScreen() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleNotificationPress = useCallback(() => {
-    (navigation.getParent() as any)?.navigate('Accueil', { screen: 'Notifications' });
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Notifications' });
   }, [navigation]);
   const handleProfilePress = useCallback(() => {
-    (navigation.getParent() as any)?.navigate('Accueil', { screen: 'Profile' });
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Profile' });
   }, [navigation]);
   const { addNotification } = useNotifications();
   const {
@@ -301,7 +307,8 @@ export default function RewardsScreen() {
             availableBoosts.map((boost) => (
               <LinearGradient
                 key={boost.id}
-                colors={[colors.primaryBlue, colors.primaryPurple]}
+                colors={[...REWARDS_CARD_GRADIENT]}
+                locations={[...REWARDS_CARD_GRADIENT_LOCATIONS]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={[
@@ -351,7 +358,8 @@ export default function RewardsScreen() {
               activeOpacity={0.9}
               onPress={() => navigation.navigate('BadgeDetail', { badge })}>
               <LinearGradient
-                colors={badge.unlocked ? [colors.primaryBlue, colors.primaryPurple] : ['#F3F4F6', '#E2E8F0']}
+                colors={badge.unlocked ? [...REWARDS_CARD_GRADIENT] : ['#F3F4F6', '#E2E8F0']}
+                locations={badge.unlocked ? [...REWARDS_CARD_GRADIENT_LOCATIONS] : undefined}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={[styles.badgeItem, !badge.unlocked && styles.badgeItemLocked]}>
@@ -535,7 +543,8 @@ export default function RewardsScreen() {
           <Text style={styles.pageTitle}>Récompenses</Text>
         </View>
         <LinearGradient
-          colors={[colors.primaryBlue, colors.primaryPurple]}
+          colors={[...REWARDS_CARD_GRADIENT]}
+          locations={[...REWARDS_CARD_GRADIENT_LOCATIONS]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.heroCard}>
@@ -573,7 +582,8 @@ export default function RewardsScreen() {
                 activeOpacity={0.85}>
                 {isActive ? (
                   <LinearGradient
-                    colors={[colors.primaryBlue, colors.primaryPurple]}
+                    colors={[...REWARDS_CARD_GRADIENT]}
+                    locations={[...REWARDS_CARD_GRADIENT_LOCATIONS]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.tabButtonActive}>

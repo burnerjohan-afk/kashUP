@@ -7,13 +7,12 @@ import ConsentScreen from '../screens/ConsentScreen';
 import DataExportScreen from '../screens/DataExportScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import KYCVerificationScreen from '../screens/KYCVerificationScreen';
-import LoginScreen from '../screens/LoginScreen';
 import OfferTemplateScreen from '../screens/OfferTemplateScreen';
 import PartnerDetailScreen from '../screens/PartnerDetailScreen';
 import PowensLinkScreen from '../screens/PowensLinkScreen';
+import QRScanScreen from '../screens/QRScanScreen';
 import PrivacyInfoScreen from '../screens/PrivacyInfoScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
-import SignupScreen from '../screens/SignupScreen';
 import VoucherDetailScreen from '../screens/VoucherDetailScreen';
 import type { GiftBox } from '@/src/services/giftCardService';
 import { VoucherPayload } from '../types/vouchers';
@@ -24,8 +23,7 @@ export type MainStackParamList = {
   OfferTemplate: { partnerId: string; offerType: 'welcome' | 'permanent' | 'voucher' };
   BoxUpDetail: { boxId: string; box?: GiftBox };
   VoucherDetail: { voucher: VoucherPayload };
-  Login: undefined;
-  Signup: undefined;
+  QRScan: undefined;
   PowensLink: undefined;
   Consent: undefined;
   PrivacyInfo: undefined;
@@ -64,8 +62,11 @@ export default function MainStack() {
         component={VoucherDetailScreen}
         options={{ title: 'Mon bon d’achat' }}
       />
-      <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Connexion' }} />
-      <Stack.Screen name="Signup" component={SignupScreen} options={{ title: 'Créer un compte' }} />
+      <Stack.Screen
+        name="QRScan"
+        component={QRScanScreen}
+        options={{ headerShown: false, title: 'Scanner QR' }}
+      />
       <Stack.Screen name="PowensLink" component={PowensLinkScreen} options={{ title: 'Connexion bancaire' }} />
       <Stack.Screen name="Consent" component={ConsentScreen} options={{ title: 'Consentements RGPD' }} />
       <Stack.Screen name="PrivacyInfo" component={PrivacyInfoScreen} options={{ title: 'Vie privée' }} />

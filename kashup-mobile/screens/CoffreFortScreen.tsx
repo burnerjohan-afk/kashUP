@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import { useWallet } from '@/src/hooks/useWallet';
 import { getCoffreFortHistory, transferToCoffreFort, withdrawFromCoffreFort } from '@/src/services/walletService';
 import type { CagnotteStackParamList } from '../navigation/CagnotteStack';
@@ -176,14 +176,22 @@ export default function CoffreFortScreen() {
               keyboardType="decimal-pad"
             />
             <TouchableOpacity
-              style={[styles.primaryButton, transferring && styles.buttonDisabled]}
+              style={[styles.primaryButtonWrap, transferring && styles.buttonDisabled]}
               onPress={handleTransfer}
-              disabled={transferring}>
-              {transferring ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Verser</Text>
-              )}
+              disabled={transferring}
+              activeOpacity={0.85}>
+              <LinearGradient
+                colors={[...CARD_GRADIENT_COLORS]}
+                locations={[...CARD_GRADIENT_LOCATIONS]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.primaryButton}>
+                {transferring ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Verser</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
           </View>
 
@@ -343,8 +351,11 @@ const styles = StyleSheet.create({
     color: colors.textMain,
     marginBottom: spacing.md,
   },
+  primaryButtonWrap: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
   primaryButton: {
-    backgroundColor: colors.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     alignItems: 'center',

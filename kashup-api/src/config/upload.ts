@@ -12,29 +12,29 @@ if (!fs.existsSync(uploadsDir)) {
 // Configuration du stockage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Déterminer le type depuis le body ou l'URL
+    // Déterminer le type depuis le body ou l'URL (req.path = chemin relatif au router, utiliser baseUrl/originalUrl pour les routes montées)
+    const pathForType = [req.path, req.url, req.baseUrl, req.originalUrl].filter(Boolean).join(' ');
     let type = 'general';
     let partnerId: string | undefined;
-    
+
     if (req.body?.type) {
       type = req.body.type;
-    } else if (req.path?.includes('partner') || req.url?.includes('partner')) {
+    } else if (pathForType.includes('partner')) {
       type = 'partners';
       // Si c'est une mise à jour, utiliser l'ID du partenaire depuis les params ou l'URL
       if (req.params?.id) {
         partnerId = req.params.id;
       } else if (req.body?.partnerId) {
         partnerId = req.body.partnerId;
-      } else if (req.url) {
+      } else {
         // Extraire l'ID depuis l'URL (ex: /partners/cmj8sdmge00014y78309dqsye ou /api/v1/partners/cmj8sdmge00014y78309dqsye)
-        // Essayer plusieurs patterns pour être sûr de capturer l'ID
+        const urlToMatch = req.originalUrl || req.url || req.baseUrl || '';
         const patterns = [
           /\/partners\/([^\/\?]+)/,  // /partners/:id ou /api/v1/partners/:id
           /\/partners\/([a-zA-Z0-9_-]+)/,  // ID avec caractères alphanumériques
         ];
-        
         for (const pattern of patterns) {
-          const match = req.url.match(pattern);
+          const match = urlToMatch.match(pattern);
           if (match && match[1]) {
             partnerId = match[1];
             console.log(`[Multer] ID extrait depuis l'URL: ${partnerId} (pattern: ${pattern})`);
@@ -46,17 +46,17 @@ const storage = multer.diskStorage({
           console.warn(`[Multer] Impossible d'extraire partnerId depuis l'URL: ${req.url}`);
         }
       }
-    } else if (req.path?.includes('offer') || req.url?.includes('offer')) {
+    } else if (pathForType.includes('offer')) {
       type = 'offers';
-    } else if (req.path?.includes('reward') || req.url?.includes('reward')) {
+    } else if (pathForType.includes('reward')) {
       type = 'rewards';
-    } else if (req.path?.includes('gift-card') || req.url?.includes('gift-card')) {
+    } else if (pathForType.includes('gift-card')) {
       type = 'gift-cards';
-    } else if (req.path?.includes('donation') || req.url?.includes('donation')) {
+    } else if (pathForType.includes('donation')) {
       type = 'donations';
-    } else if (req.path?.includes('home-banner') || req.url?.includes('home-banner')) {
+    } else if (pathForType.includes('home-banner')) {
       type = 'home-banners';
-    } else if (req.path?.includes('documents') || req.url?.includes('documents')) {
+    } else if (pathForType.includes('documents')) {
       type = 'documents';
       if (req.params?.id) partnerId = req.params.id;
     }
@@ -97,10 +97,26 @@ const storage = multer.diskStorage({
     cb(null, typeDir);
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${randomUUID()}${path.extname(file.originalname)}`;
-    console.log(`[Multer] Nom de fichier généré: ${uniqueName} pour ${file.fieldname}, original: ${file.originalname}`);
+    const extFromName = path.extname(file.originalname || '').toLowerCase();
+    const validImageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const extFromMime: Record<string, string> = {
+      'image/jpeg': '.jpg',
+      'image/jpg': '.jpg',
+      'image/png': '.png',
+      'image/gif': '.gif',
+      'image/webp': '.webp',
+    };
+    const isImage = file.mimetype && file.mimetype.startsWith('image/');
+    const ext =
+      validImageExts.includes(extFromName)
+        ? extFromName
+        : isImage
+          ? (extFromMime[file.mimetype] || '.jpg')
+          : extFromName || '';
+    const uniqueName = `${randomUUID()}${ext}`;
+    console.log(`[Multer] Nom de fichier généré: ${uniqueName} pour ${file.fieldname}, original: ${file.originalname}, mimetype: ${file.mimetype}`);
     cb(null, uniqueName);
-  }
+  },
 });
 
 // Filtre pour accepter les images et les PDFs

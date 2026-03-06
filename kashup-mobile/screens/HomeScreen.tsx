@@ -8,16 +8,20 @@ import { ActivityIndicator, Dimensions, Image, Linking, Modal, RefreshControl, S
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiOrigin } from '@/src/config/runtime';
+import type { Offer } from '@/src/services/offers';
+import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
+import { useCurrentOffers } from '@/src/hooks/useCurrentOffers';
 import { useHomeBanners } from '@/src/hooks/useHomeBanners';
 import { usePartners } from '@/src/hooks/usePartners';
 import { useUserProfile } from '@/src/hooks/useUserProfile';
 import { useWallet } from '@/src/hooks/useWallet';
 import { useWebhookEvents } from '@/src/hooks/useWebhookEvents';
 import { adaptPartnerFromApi, PartnerViewModel } from '@/src/utils/partnerAdapter';
-import { colors, radius, spacing } from '../constants/theme';
+import { colors, CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, radius, spacing } from '../constants/theme';
 import { useNotifications } from '../context/NotificationsContext';
 import { HomeStackParamList } from '../navigation/HomeStack';
 import { MainStackParamList } from '../navigation/MainStack';
+import { navigateToOffresDuMoment } from '../navigation/navigationRef';
 
 // Mapping des partenaires vers images de fond et logos
 const getPartnerImage = (partnerName: string, categoryId?: string): string => {
@@ -123,7 +127,9 @@ export default function HomeScreen() {
     refetch: refetchPartners,
   } = usePartners();
   const { data: homeBanners, loading: bannersLoading, refetch: refetchBanners } = useHomeBanners();
+  const { data: currentOffers, refetch: refetchOffers } = useCurrentOffers();
   const [adIndex, setAdIndex] = useState(0);
+  const [highlightedCardTab, setHighlightedCardTab] = useState<'don' | 'cartes' | 'loteries' | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const adIndexRef = useRef(0);
   const adTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,7 +161,10 @@ export default function HomeScreen() {
 
   useWebhookEvents({
     onPartnersChanged: refetchPartners,
-    onOffersChanged: refetchPartners,
+    onOffersChanged: () => {
+      refetchPartners();
+      refetchOffers();
+    },
   });
 
   const isFirstFocusPartners = React.useRef(true);
@@ -236,8 +245,8 @@ export default function HomeScreen() {
   const refreshing = profileLoading || walletLoading || partnersLoading || bannersLoading;
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([refetchProfile(), refetchWallet(), refetchPartners(), refetchBanners()]);
-  }, [refetchProfile, refetchWallet, refetchPartners, refetchBanners]);
+    await Promise.all([refetchProfile(), refetchWallet(), refetchPartners(), refetchBanners(), refetchOffers()]);
+  }, [refetchProfile, refetchWallet, refetchPartners, refetchBanners, refetchOffers]);
 
   const handlePartnerPress = (partnerId: string) => {
     navigation.navigate('PartnerDetail', { partnerId });
@@ -248,16 +257,21 @@ export default function HomeScreen() {
     (parent as any)?.navigate('Partenaires', { openNearby: true, nearbyRadiusKm: 10 });
   };
 
+  const handleSeeAllOffersPress = () => {
+    navigateToOffresDuMoment();
+  };
+
   const handleProfilePress = () => {
     navigation.navigate('Profile' as never);
   };
 
   const handleDonPress = () => {
+    setHighlightedCardTab('don');
     navigation.navigate('Donations' as never);
   };
 
   const handleGiftCardsPress = () => {
-    // Navigation vers l'onglet "Bons d'achat" dans les BottomTabs
+    setHighlightedCardTab('cartes');
     const parent = navigation.getParent();
     if (parent) {
       (parent as any).navigate('Tabs', { screen: 'Bons d\'achat' });
@@ -265,7 +279,7 @@ export default function HomeScreen() {
   };
 
   const handleLotteryPress = () => {
-    // Navigation vers l'onglet "Rewards" avec initialTab: 'lotteries'
+    setHighlightedCardTab('loteries');
     const parent = navigation.getParent();
     if (parent) {
       (parent as any).navigate('Tabs', { screen: 'Rewards', params: { initialTab: 'lotteries' } });
@@ -330,11 +344,22 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(0, insets.top - 36) + HEADER_CONTENT_HEIGHT + spacing.lg }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
-        {/* SECTION RÉSUMÉ UTILISATEUR - style Uber Eats (vert) */}
+        {/* Carte Mon KashUP — forme carte bancaire + fond type vagues/ malachite */}
         <View style={styles.userSummaryContainer}>
-          <LinearGradient colors={['#05A357', '#048A48']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.userSummaryCard}>
-            <View style={styles.userSummaryTextBlock}>
-              <Text style={styles.userSummaryLabel}>Mon KashUP</Text>
+          <View style={styles.userSummaryCardWrap}>
+            {/* Vagues concentriques (anneaux) en arrière-plan */}
+            <View style={[styles.cardRing, styles.cardRing1]} />
+            <View style={[styles.cardRing, styles.cardRing2]} />
+            <View style={[styles.cardRing, styles.cardRing3]} />
+            <View style={[styles.cardRing, styles.cardRing4]} />
+            <LinearGradient
+              colors={['#034d35', '#047857', '#059669', '#047857', '#065f46']}
+              locations={[0, 0.25, 0.5, 0.75, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.userSummaryCard}>
+              <View style={styles.userSummaryTextBlock}>
+                <Text style={[styles.userSummaryLabel, styles.userSummaryLabelNowrap]} numberOfLines={1}>Carte{"\u00A0"}UP</Text>
               <Text style={styles.userSummaryAmount}>
                 {walletData.wallet?.soldeCashback != null
                   ? formatCashback(walletData.wallet.soldeCashback)
@@ -359,28 +384,29 @@ export default function HomeScreen() {
             </View>
             <View style={styles.userSummaryTabs}>
               <TouchableOpacity
-                style={styles.userSummaryTab}
+                style={[styles.userSummaryTab, highlightedCardTab === 'don' && styles.userSummaryTabActive]}
                 onPress={handleDonPress}
                 activeOpacity={0.85}>
-                <Ionicons name="heart-outline" size={16} color="rgba(255,255,255,0.95)" />
-                <Text style={styles.userSummaryTabText}>Don</Text>
+                <Ionicons name="heart-outline" size={16} color={colors.primaryDark} />
+                <Text style={[styles.userSummaryTabText, highlightedCardTab === 'don' && styles.userSummaryTabTextActive]} numberOfLines={1}>Don</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.userSummaryTab}
+                style={[styles.userSummaryTab, highlightedCardTab === 'cartes' && styles.userSummaryTabActive]}
                 onPress={handleGiftCardsPress}
                 activeOpacity={0.85}>
-                <Ionicons name="gift-outline" size={16} color="rgba(255,255,255,0.95)" />
-                <Text style={styles.userSummaryTabText}>Cartes UP</Text>
+                <Ionicons name="gift-outline" size={16} color={colors.primaryDark} />
+                <Text style={[styles.userSummaryTabText, highlightedCardTab === 'cartes' && styles.userSummaryTabTextActive]} numberOfLines={1}>Cartes{"\u00A0"}UP</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.userSummaryTab}
+                style={[styles.userSummaryTab, highlightedCardTab === 'loteries' && styles.userSummaryTabActive]}
                 onPress={handleLotteryPress}
                 activeOpacity={0.85}>
-                <Ionicons name="trophy-outline" size={16} color="rgba(255,255,255,0.95)" />
-                <Text style={styles.userSummaryTabText}>Loteries</Text>
+                <Ionicons name="trophy-outline" size={16} color={colors.primaryDark} />
+                <Text style={[styles.userSummaryTabText, highlightedCardTab === 'loteries' && styles.userSummaryTabTextActive]} numberOfLines={1}>Loteries</Text>
               </TouchableOpacity>
             </View>
-          </LinearGradient>
+            </LinearGradient>
+          </View>
         </View>
 
         {/* Espace publicité — défilement horizontal images/vidéos, snap une image */}
@@ -475,6 +501,107 @@ export default function HomeScreen() {
                 />
               ))}
             </View>
+          </View>
+        )}
+
+        {/* Carousel Offres du moment — juste au-dessus de "Trouvez les partenaires autour de vous" */}
+        {currentOffers.length > 0 && (
+          <View style={styles.offresSection}>
+            <View style={styles.offresSectionHeader}>
+              <Text style={styles.offresSectionTitle}>Offres du moment</Text>
+              <TouchableOpacity onPress={handleSeeAllOffersPress} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={styles.offresSeeAll}>Voir toutes les offres</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.offresCarousel}
+              snapToInterval={OFFER_CARD_WIDTH + spacing.md}
+              snapToAlignment="start"
+              decelerationRate="fast">
+              {currentOffers.map((offer) => {
+                const imageUri = offer.imageUrl ? normalizeImageUrl(offer.imageUrl) : null;
+                const partnerLogoUri = offer.partner?.logoUrl ? normalizeImageUrl(offer.partner.logoUrl) : null;
+                const partnerName = offer.partner?.name ?? 'Partenaire';
+                const stockTotal = offer.stock ?? 0;
+                const stockUsed = offer.stockUsed ?? 0;
+                const restantes = Math.max(0, stockTotal - stockUsed);
+                const restantesRatio = stockTotal > 0 ? restantes / stockTotal : 1;
+                const restantesVariant = restantesRatio > 0.5 ? 'green' : restantesRatio > 0.25 ? 'orange' : 'red';
+                const restantesBg = restantesVariant === 'green' ? `${colors.primary}14` : restantesVariant === 'orange' ? 'rgba(234, 88, 12, 0.18)' : 'rgba(185, 28, 28, 0.18)';
+                const restantesColor = restantesVariant === 'green' ? colors.primary : restantesVariant === 'orange' ? '#EA580C' : '#B91C1C';
+                const price = offer.price != null ? `${Number(offer.price).toFixed(2)} €` : null;
+                const cashbackRate = offer.cashbackRate != null ? Number(offer.cashbackRate) : null;
+                const hasCashback = cashbackRate != null && cashbackRate >= 0;
+                const formatDate = (iso: string) => {
+                  try {
+                    return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+                  } catch {
+                    return iso;
+                  }
+                };
+                return (
+                  <TouchableOpacity
+                    key={offer.id}
+                    style={styles.offreCard}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (offer.partnerId) {
+                        navigation.navigate('PartnerDetail', { partnerId: offer.partnerId });
+                      } else {
+                        handleSeeAllOffersPress();
+                      }
+                    }}>
+                    {imageUri ? (
+                      <Image source={{ uri: imageUri }} style={styles.offreCardImage} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.offreCardImagePlaceholder}>
+                        <Ionicons name="pricetag-outline" size={28} color={colors.textSecondary} />
+                      </View>
+                    )}
+                    <View style={styles.offreCardBody}>
+                      <Text style={styles.offreCardTitle} numberOfLines={2}>{offer.title}</Text>
+                      {offer.subtitle ? (
+                        <Text style={styles.offreCardSubtitle} numberOfLines={1}>{offer.subtitle}</Text>
+                      ) : null}
+                      <Text style={styles.offreCardPartner}>{partnerName}</Text>
+                      <View style={styles.offrePriceCashbackRow}>
+                        {price ? <Text style={styles.offreCardPrice}>{price}</Text> : null}
+                        <View style={styles.offreCashbackItem}>
+                          <Ionicons name="pricetag" size={11} color={hasCashback ? '#05A357' : colors.textSecondary} />
+                          <Text style={[styles.offreCashbackRate, !hasCashback && styles.offreCashbackRateEmpty]}>
+                            {hasCashback ? `${cashbackRate}%` : '—'}
+                          </Text>
+                          <Text style={styles.offreCashbackLabel}>{hasCashback ? "À l'achat" : 'Non renseigné'}</Text>
+                        </View>
+                      </View>
+                      {stockTotal > 0 && (
+                        <View style={[styles.offreRestantesBlock, { backgroundColor: restantesBg }]}>
+                          <Text style={[styles.offreRestantesCount, { color: restantesColor }]}>{restantes}</Text>
+                          <Text style={styles.offreRestantesLabel}>restante{restantes !== 1 ? 's' : ''}</Text>
+                        </View>
+                      )}
+                      {offer.conditions ? (
+                        <Text style={styles.offreCardConditions} numberOfLines={1}>{offer.conditions}</Text>
+                      ) : null}
+                      <View style={styles.offreLogoAndDatesRow}>
+                        <Text style={styles.offreCardDates}>
+                          Du {formatDate(offer.startsAt)} au {formatDate(offer.endsAt)}
+                        </Text>
+                        {partnerLogoUri ? (
+                          <Image source={{ uri: partnerLogoUri }} style={styles.offrePartnerLogo} resizeMode="contain" />
+                        ) : (
+                          <View style={styles.offrePartnerLogoPlaceholder}>
+                            <Text style={styles.offrePartnerLogoPlaceholderText} numberOfLines={1}>{partnerName.slice(0, 2).toUpperCase()}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         )}
 
@@ -591,8 +718,15 @@ export default function HomeScreen() {
               const parent = navigation.getParent();
               (parent as any)?.navigate('Partenaires');
             }}>
-            <Text style={styles.ctaPartnersText}>Voir tous les partenaires</Text>
-            <Ionicons name="arrow-forward" size={20} color={colors.white} />
+            <LinearGradient
+              colors={[...CARD_GRADIENT_COLORS]}
+              locations={[...CARD_GRADIENT_LOCATIONS]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.ctaPartnersGradient}>
+              <Text style={styles.ctaPartnersText}>Voir tous les partenaires</Text>
+              <Ionicons name="arrow-forward" size={20} color={colors.white} />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
@@ -664,7 +798,7 @@ function CashbackRatesBlock({
     <View style={[styles.cashbackRatesBlock, compact && styles.cashbackRatesBlockCompact]}>
       {hasPermanent && (
         <View style={styles.cashbackItem}>
-          <Ionicons name="pricetag" size={12} color={colors.primary} />
+          <Ionicons name="pricetag" size={12} color="#05A357" />
           <Text style={styles.cashbackRate}>{permanentRate}%</Text>
           <Text style={styles.cashbackItemLabel}>Permanent</Text>
         </View>
@@ -869,6 +1003,7 @@ function Section({ title, subtitle, loading, children }: SectionProps) {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PEPITE_CARD_WIDTH = 260;
+const OFFER_CARD_WIDTH = 280;
 const AD_PEEK = 20;
 const AD_CARD_WIDTH = SCREEN_WIDTH - 2 * AD_PEEK;
 const AD_GAP = 10;
@@ -1015,8 +1150,60 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  userSummaryCardWrap: {
+    aspectRatio: 1.586,
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  cardRing: {
+    position: 'absolute',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'transparent',
+  },
+  cardRing1: {
+    width: 220,
+    height: 220,
+    top: '50%',
+    left: '50%',
+    marginLeft: -110,
+    marginTop: -110,
+  },
+  cardRing2: {
+    width: 280,
+    height: 280,
+    top: '50%',
+    left: '50%',
+    marginLeft: -140,
+    marginTop: -140,
+    borderColor: 'rgba(212,175,55,0.2)',
+  },
+  cardRing3: {
+    width: 360,
+    height: 360,
+    top: '50%',
+    left: '50%',
+    marginLeft: -180,
+    marginTop: -180,
+  },
+  cardRing4: {
+    width: 440,
+    height: 440,
+    top: '50%',
+    left: '50%',
+    marginLeft: -220,
+    marginTop: -220,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   userSummaryCard: {
-    borderRadius: 32,
+    borderRadius: 20,
     padding: spacing.lg,
     marginBottom: spacing.xl,
     gap: spacing.md,
@@ -1029,6 +1216,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  userSummaryLabelNowrap: {
+    flexShrink: 0,
   },
   userSummaryAmount: {
     fontSize: 34,
@@ -1074,7 +1264,7 @@ const styles = StyleSheet.create({
   // Onglets intégrés dans le card (style Ma cagnotte)
   userSummaryTabs: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: spacing.sm,
     width: '100%',
   },
@@ -1084,17 +1274,180 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: colors.white,
     flexGrow: 1,
-    flexBasis: '31%',
-    maxWidth: '31%',
+    flexBasis: 0,
+    minWidth: 0,
+  },
+  userSummaryTabActive: {
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   userSummaryTabText: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
+    color: colors.primaryDark,
+    flexShrink: 0,
+  },
+  userSummaryTabTextActive: {
+    color: colors.primaryDark,
+  },
+  // Offres du moment (carousel)
+  offresSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  offresSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  offresSectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  offresSeeAll: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  offresCarousel: {
+    paddingRight: spacing.lg,
+  },
+  offreCard: {
+    width: OFFER_CARD_WIDTH,
+    marginRight: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+  },
+  offreCardImage: {
+    width: '100%',
+    height: 100,
+    backgroundColor: colors.greyLight,
+  },
+  offreCardImagePlaceholder: {
+    width: '100%',
+    height: 100,
+    backgroundColor: colors.greyLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offreCardBody: {
+    padding: spacing.sm,
+    paddingBottom: 4,
+  },
+  offreCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginBottom: 2,
+  },
+  offreCardSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  offreCardPartner: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 2,
+  },
+  offrePriceCashbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    marginBottom: 2,
+  },
+  offreCardPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  offreCashbackItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  offreCashbackRate: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#05A357',
+  },
+  offreCashbackRateEmpty: {
+    color: colors.textSecondary,
+  },
+  offreCashbackLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  offreRestantesBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginTop: 8,
+    marginBottom: -8,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    alignSelf: 'flex-start',
+  },
+  offreRestantesCount: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  offreRestantesLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMain,
+  },
+  offreLogoAndDatesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+    marginTop: 4,
+    gap: spacing.sm,
+  },
+  offrePartnerLogo: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.greyLight,
+  },
+  offrePartnerLogoPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.greyBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offrePartnerLogoPlaceholderText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  offreCardDates: {
+    fontSize: 10,
+    color: colors.textTertiary,
+    flex: 1,
+    textAlign: 'left',
+  },
+  offreCardConditions: {
+    fontSize: 10,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
   },
   // Encart partenaires autour de vous
   partnersNearbyContainer: {
@@ -1247,7 +1600,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primaryGreen,
+    backgroundColor: '#05A357',
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: radius.pill,
@@ -1290,7 +1643,7 @@ const styles = StyleSheet.create({
   cashbackRate: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#05A357',
   },
   cashbackRateWelcome: {
     color: '#7C3AED',
@@ -1456,15 +1809,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl * 2,
   },
   ctaPartnersButton: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  ctaPartnersGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 0,
   },
   ctaPartnersText: {
     fontSize: 16,

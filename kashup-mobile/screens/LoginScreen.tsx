@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import * as Google from 'expo-auth-session/providers/google';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -23,19 +24,38 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { requestPasswordReset } from '@/src/services/authService';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { MainStackParamList } from '../navigation/MainStack';
+import { AuthStackParamList } from '../navigation/AuthStack';
+import { formatApiError } from '../src/utils/error-handler';
 
-type Nav = NativeStackNavigationProp<MainStackParamList>;
+type Nav = NativeStackNavigationProp<AuthStackParamList>;
 type AuthMode = 'login' | 'signup';
 
 const SAVED_CREDENTIALS_KEY = 'kashup-saved-credentials';
 const BIOMETRIC_PREF_KEY = 'kashup-biometric-enabled';
 
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
+
+/** Sur iOS, expo-auth-session exige que iosClientId soit défini (sinon Render Error). On met un placeholder si non configuré. */
+const iosClientIdForHook =
+  Platform.OS === 'ios' ? (GOOGLE_IOS_CLIENT_ID || 'google-ios-not-configured') : undefined;
+
 export default function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const { login, signUp, loginWithApple, loginWithGoogle } = useAuth();
+
+  const [googleRequest, , googlePromptAsync] = Google.useIdTokenAuthRequest({
+    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    iosClientId: iosClientIdForHook,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+  });
+
+  const isGoogleConfigured = Boolean(
+    GOOGLE_WEB_CLIENT_ID && (Platform.OS !== 'ios' || GOOGLE_IOS_CLIENT_ID) && (Platform.OS !== 'android' || GOOGLE_ANDROID_CLIENT_ID)
+  );
 
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -183,25 +203,52 @@ export default function LoginScreen() {
     }
   };
 
-  const handleSocial = async (provider: 'apple' | 'google') => {
-    setLoading(true);
-    setStatus(null);
-    try {
-      if (provider === 'apple') {
-        await loginWithApple();
-      } else {
-        await loginWithGoogle();
+  const handleSocial = useCallback(
+    async (provider: 'apple' | 'google') => {
+      setLoading(true);
+      setStatus(null);
+      try {
+        if (provider === 'apple') {
+          if (Platform.OS !== 'ios') {
+            setStatus('Connexion Apple disponible uniquement sur iPhone et iPad.');
+            return;
+          }
+          await loginWithApple();
+        } else {
+          if (!isGoogleConfigured || !googleRequest) {
+            Alert.alert(
+              'Google non configuré',
+              'Pour vous connecter avec Google, les identifiants OAuth doivent être définis.\n\n' +
+                'Application : dans .env ou .env.local, ajoutez EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID (iOS) et EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID (Android).\n\n' +
+                'API : dans le .env de kashup-api, ajoutez GOOGLE_CLIENT_ID (même ID que le client Web Google).'
+            );
+            return;
+          }
+          const result = await googlePromptAsync();
+          if (result?.type !== 'success') {
+            if (result?.type === 'cancel') return;
+            setStatus('Connexion Google annulée ou échouée.');
+            return;
+          }
+          const idToken = result.params?.id_token;
+          if (!idToken) {
+            setStatus('Token Google absent. Réessayez.');
+            return;
+          }
+          await loginWithGoogle(idToken);
+        }
+        await handleBiometricPreference(false);
+        await handleRememberPreference('', { forceClear: true });
+        setRememberMe(false);
+        resetToApp();
+      } catch (error) {
+        setStatus(formatApiError(error));
+      } finally {
+        setLoading(false);
       }
-      await handleBiometricPreference(false);
-      await handleRememberPreference('', { forceClear: true });
-      setRememberMe(false);
-      resetToApp();
-    } catch (error) {
-      setStatus('Connexion via fournisseur impossible pour le moment.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [loginWithApple, loginWithGoogle, isGoogleConfigured, googleRequest, googlePromptAsync, handleBiometricPreference, handleRememberPreference, resetToApp]
+  );
 
   const handleBiometricLogin = async () => {
     // ⚠️ RGPD: La biométrie ne peut plus être utilisée pour auto-remplir le mot de passe
@@ -236,7 +283,12 @@ export default function LoginScreen() {
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <LinearGradient colors={['#150B3E', '#261857', '#33226C']} style={styles.hero}>
+      <LinearGradient
+        colors={[...CARD_GRADIENT_COLORS]}
+        locations={[...CARD_GRADIENT_LOCATIONS]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}>
         <View style={styles.heroContent}>
           <Text style={styles.heroEyebrow}>Bienvenue sur KashUP</Text>
           <Text style={styles.heroTitle}>Financez votre quotidien, boostez vos causes.</Text>
@@ -259,7 +311,17 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     key={item}
                     style={[styles.modeButton, active && styles.modeButtonActive]}
-                    onPress={() => setMode(item)}>
+                    onPress={() => setMode(item)}
+                    activeOpacity={0.8}>
+                    {active && (
+                      <LinearGradient
+                        colors={[...CARD_GRADIENT_COLORS]}
+                        locations={[...CARD_GRADIENT_LOCATIONS]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[StyleSheet.absoluteFill, styles.modeButtonGradient]}
+                      />
+                    )}
                     <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>
                       {item === 'login' ? 'Se connecter' : 'Créer un compte'}
                     </Text>
@@ -304,12 +366,19 @@ export default function LoginScreen() {
                 <TouchableOpacity style={styles.forgotButton} onPress={handleForgotPassword}>
                   <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButton} onPress={formActions[mode]} disabled={loading}>
-                  {loading ? (
-                    <ActivityIndicator color={colors.white} />
-                  ) : (
-                    <Text style={styles.primaryText}>Se connecter</Text>
-                  )}
+                <TouchableOpacity style={styles.primaryButton} onPress={formActions[mode]} disabled={loading} activeOpacity={0.8}>
+                  <LinearGradient
+                    colors={[...CARD_GRADIENT_COLORS]}
+                    locations={[...CARD_GRADIENT_LOCATIONS]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.primaryButtonGradient}>
+                    {loading ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={styles.primaryText}>Se connecter</Text>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
               </>
             ) : (
@@ -347,12 +416,19 @@ export default function LoginScreen() {
                   icon="shield-checkmark-outline"
                   autoCapitalize="none"
                 />
-                <TouchableOpacity style={styles.primaryButton} onPress={formActions[mode]} disabled={loading}>
-                  {loading ? (
-                    <ActivityIndicator color={colors.white} />
-                  ) : (
-                    <Text style={styles.primaryText}>Créer mon compte</Text>
-                  )}
+                <TouchableOpacity style={styles.primaryButton} onPress={formActions[mode]} disabled={loading} activeOpacity={0.8}>
+                  <LinearGradient
+                    colors={[...CARD_GRADIENT_COLORS]}
+                    locations={[...CARD_GRADIENT_LOCATIONS]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.primaryButtonGradient}>
+                    {loading ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={styles.primaryText}>Créer mon compte</Text>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
               </>
             )}
@@ -365,7 +441,7 @@ export default function LoginScreen() {
 
             <View style={styles.socialRow}>
               <SocialButton
-                label="Gmail"
+                label="Google"
                 icon={
                   <Image
                     source={{
@@ -375,12 +451,16 @@ export default function LoginScreen() {
                   />
                 }
                 onPress={() => handleSocial('google')}
+                disabled={loading || !googleRequest}
               />
-              <SocialButton
-                label="Apple"
-                icon={<FontAwesome name="apple" size={20} color={colors.textMain} />}
-                onPress={() => handleSocial('apple')}
-              />
+              {Platform.OS === 'ios' && (
+                <SocialButton
+                  label="Apple"
+                  icon={<FontAwesome name="apple" size={20} color={colors.textMain} />}
+                  onPress={() => handleSocial('apple')}
+                  disabled={loading}
+                />
+              )}
             </View>
 
             <View style={styles.biometricBlock}>
@@ -461,15 +541,21 @@ function SocialButton({
   label,
   icon,
   onPress,
+  disabled,
 }: {
   label: string;
   icon: React.ReactNode;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <TouchableOpacity style={styles.socialButton} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.socialButton, disabled && styles.socialButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.8}>
       {icon}
-      <Text style={styles.socialLabel}>{label}</Text>
+      <Text style={[styles.socialLabel, disabled && styles.socialLabelDisabled]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -488,7 +574,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   heroEyebrow: {
-    color: '#A5B4FC',
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
@@ -500,7 +586,7 @@ const styles = StyleSheet.create({
     lineHeight: 32,
   },
   heroBody: {
-    color: '#E0E7FF',
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 14,
     lineHeight: 20,
   },
@@ -529,13 +615,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   modeButtonActive: {
-    backgroundColor: colors.white,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
+  },
+  modeButtonGradient: {
+    borderRadius: radius.pill,
   },
   modeLabel: {
     fontSize: 14,
@@ -543,7 +633,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modeLabelActive: {
-    color: colors.primaryPurple,
+    color: colors.white,
     fontWeight: '700',
   },
   inputGroup: {
@@ -603,9 +693,13 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     borderRadius: radius.pill,
-    backgroundColor: colors.primaryPurple,
+    overflow: 'hidden',
+  },
+  primaryButtonGradient: {
+    borderRadius: radius.pill,
     paddingVertical: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryText: {
     color: colors.white,
@@ -646,6 +740,12 @@ const styles = StyleSheet.create({
   socialLabel: {
     fontWeight: '600',
     color: colors.textMain,
+  },
+  socialButtonDisabled: {
+    opacity: 0.5,
+  },
+  socialLabelDisabled: {
+    color: colors.textSecondary,
   },
   gmailIcon: {
     width: 24,

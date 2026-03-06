@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 
-import { colors, radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import type { NavigationProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeStack';
 import { useDonationCategories } from '@/src/hooks/useDonationCategories';
@@ -100,11 +100,23 @@ export default function DonationsScreen() {
               return (
                 <TouchableOpacity
                   key={department}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setSelectedDepartment(department)}>
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                    {department}
-                  </Text>
+                  style={[styles.filterChipWrap, active && styles.filterChipWrapActive]}
+                  onPress={() => setSelectedDepartment(department)}
+                  activeOpacity={0.85}>
+                  {active ? (
+                    <LinearGradient
+                      colors={[...CARD_GRADIENT_COLORS]}
+                      locations={[...CARD_GRADIENT_LOCATIONS]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[styles.filterChip, { borderWidth: 0 }]}>
+                      <Text style={styles.filterChipTextActive}>{department}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={[styles.filterChip, styles.filterChipInactive]}>
+                      <Text style={styles.filterChipText}>{department}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -112,26 +124,46 @@ export default function DonationsScreen() {
           <Text style={[styles.filtersLabel, styles.filtersLabelTop]}>Filtrer par catégorie</Text>
           <View style={styles.filtersRow}>
             <TouchableOpacity
-              style={[styles.filterChip, selectedCategoryId === 'all' && styles.filterChipActive]}
-              onPress={() => setSelectedCategoryId('all')}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  selectedCategoryId === 'all' && styles.filterChipTextActive,
-                ]}>
-                Toutes
-              </Text>
+              style={[styles.filterChipWrap, selectedCategoryId === 'all' && styles.filterChipWrapActive]}
+              onPress={() => setSelectedCategoryId('all')}
+              activeOpacity={0.85}>
+              {selectedCategoryId === 'all' ? (
+                <LinearGradient
+                  colors={[...CARD_GRADIENT_COLORS]}
+                  locations={[...CARD_GRADIENT_LOCATIONS]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.filterChip, { borderWidth: 0 }]}>
+                  <Text style={styles.filterChipTextActive}>Toutes</Text>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.filterChip, styles.filterChipInactive]}>
+                  <Text style={styles.filterChipText}>Toutes</Text>
+                </View>
+              )}
             </TouchableOpacity>
             {categories.map((category) => {
               const active = category.id === selectedCategoryId;
               return (
                 <TouchableOpacity
                   key={category.id}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setSelectedCategoryId(category.id)}>
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                    {category.title.split(' ')[0]}
-                  </Text>
+                  style={[styles.filterChipWrap, active && styles.filterChipWrapActive]}
+                  onPress={() => setSelectedCategoryId(category.id)}
+                  activeOpacity={0.85}>
+                  {active ? (
+                    <LinearGradient
+                      colors={[...CARD_GRADIENT_COLORS]}
+                      locations={[...CARD_GRADIENT_LOCATIONS]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[styles.filterChip, { borderWidth: 0 }]}>
+                      <Text style={styles.filterChipTextActive}>{category.title.split(' ')[0]}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={[styles.filterChip, styles.filterChipInactive]}>
+                      <Text style={styles.filterChipText}>{category.title.split(' ')[0]}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -357,6 +389,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  filterChipWrap: {
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+  },
+  filterChipWrapActive: {
+    overflow: 'hidden',
+  },
   filterChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -364,9 +403,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  filterChipActive: {
-    backgroundColor: colors.primaryBlue,
-    borderColor: colors.primaryBlue,
+  filterChipInactive: {
+    backgroundColor: colors.white,
   },
   filterChipText: {
     fontSize: 13,
@@ -374,6 +412,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   filterChipTextActive: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.white,
   },
   categoryCard: {
