@@ -42,6 +42,9 @@ const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_I
 /** Sur iOS, expo-auth-session exige que iosClientId soit défini (sinon Render Error). On met un placeholder si non configuré. */
 const iosClientIdForHook =
   Platform.OS === 'ios' ? (GOOGLE_IOS_CLIENT_ID || 'google-ios-not-configured') : undefined;
+/** Sur Android, expo-auth-session exige que androidClientId soit défini (sinon crash). On met un placeholder si non configuré. */
+const androidClientIdForHook =
+  Platform.OS === 'android' ? (GOOGLE_ANDROID_CLIENT_ID || 'google-android-not-configured') : undefined;
 
 export default function LoginScreen() {
   const navigation = useNavigation<Nav>();
@@ -50,7 +53,7 @@ export default function LoginScreen() {
   const [googleRequest, , googlePromptAsync] = Google.useIdTokenAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
     iosClientId: iosClientIdForHook,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    androidClientId: androidClientIdForHook,
   });
 
   const isGoogleConfigured = Boolean(

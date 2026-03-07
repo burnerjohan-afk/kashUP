@@ -1,0 +1,64 @@
+# Réduit la taille de l'archive EAS (voir https://docs.expo.dev/build-reference/easignore/)
+# Quand .easignore existe, EAS l'utilise en priorité : on reprend tout le .gitignore.
+
+# Monorepo : exclure les projets frères (non nécessaires au build mobile)
+../kashup-api/
+../kashup-web/
+../kashup-admin/
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS / OS
+.DS_Store
+*.pem
+Thumbs.db
+
+# local env files (ne pas envoyer les secrets)
+.env
+.env*.local
+.env.*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# Documentation et fichiers inutiles au build
+docs/
+*.md
+!README.md
+coverage/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+.git/
+*.log
+.cursor/

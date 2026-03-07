@@ -1,0 +1,4 @@
+# Exclure les projets frères du build mobile (réduit l'archive EAS)
+kashup-api/
+kashup-web/
+kashup-admin/
