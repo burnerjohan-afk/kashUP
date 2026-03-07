@@ -46,10 +46,14 @@ export function getHostFromExpo(): string {
   return host;
 }
 
+/** URL de prod par défaut (APK / build sans EXPO_PUBLIC_API_URL) */
+const DEFAULT_PRODUCTION_API = 'https://kashupv0.vercel.app';
+
 /**
  * Construit l'origine et la base URL de l'API.
- * Si EXPO_PUBLIC_API_URL est défini dans .env (ex: http://192.168.1.10:4000), il est utilisé en priorité (IP du PC).
- * Sinon : détection automatique via Expo (hostUri).
+ * 1) EXPO_PUBLIC_API_URL (.env / eas.json) si défini
+ * 2) En build standalone (__DEV__ = false), défaut = prod (évite 10.0.2.2 en 5G / téléphone réel)
+ * 3) Sinon détection via Expo hostUri (dev avec Expo Go)
  */
 function buildApiUrls(): { origin: string; baseUrl: string } {
   const envUrl = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL)?.trim();
@@ -69,11 +73,19 @@ function buildApiUrls(): { origin: string; baseUrl: string } {
       baseUrl: `${url}/api/v1`,
     };
   }
+  // Build standalone (APK) sans env → utiliser la prod par défaut (évite 10.0.2.2 en 5G / appareil réel)
+  if (!__DEV__) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[runtime] ⚠️ EXPO_PUBLIC_API_URL non défini en build, utilisation de la prod par défaut');
+    }
+    return {
+      origin: DEFAULT_PRODUCTION_API,
+      baseUrl: `${DEFAULT_PRODUCTION_API}/api/v1`,
+    };
+  }
   const host = getHostFromExpo();
   const origin = `http://${host}:4000`;
-  if (__DEV__) {
-    console.log('[runtime] 🔗 API Origin (auto):', origin);
-  }
+  console.log('[runtime] 🔗 API Origin (auto):', origin);
   return {
     origin,
     baseUrl: `${origin}/api/v1`,
