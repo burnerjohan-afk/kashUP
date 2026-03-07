@@ -346,8 +346,15 @@ export const createApp = () => {
   // Route health check versionnée
   app.get('/api/v1/health', healthHandler);
 
+  // Route warmup : réveille l'app complète (cold start Vercel) — répond 200 pour confirmer
+  app.get('/warmup', (req, res) => {
+    res.json({ status: 'ok', warmed: true, timestamp: new Date().toISOString() });
+  });
+
   // Versionnement: /api/v1 est canonique. On garde la racine pour compat.
+  // Vercel peut transmettre le chemin sans /api (ex. /v1/partners) selon la rewrite
   app.use('/api/v1', router);
+  app.use('/v1', router);
   app.use('/api', router); // Compatibilité avec /api/partners (sans /v1)
   app.use('/', router);
 
