@@ -104,7 +104,7 @@ export const emitPartnerWebhook = async (event: 'partner.created' | 'partner.upd
 };
 
 export const emitOfferWebhook = async (
-  event: 'offer.created' | 'offer.updated' | 'offer.stock.changed' | 'offer.status.changed',
+  event: 'offer.created' | 'offer.updated' | 'offer.stock.changed' | 'offer.status.changed' | 'offer.used',
   offer: any
 ) => {
   await emitWebhook(event, { offer });
