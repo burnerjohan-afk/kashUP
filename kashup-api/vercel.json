@@ -1,5 +1,12 @@
 {
   "buildCommand": "npm run build",
   "installCommand": "npm install",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "functions": {
+    "api/index.js": { "maxDuration": 30 }
+  },
+  "rewrites": [
+  { "source": "/health", "destination": "/api/health" },
+  { "source": "/api/v1/health", "destination": "/api/health" },
+  { "source": "/(.*)", "destination": "/api" }
+]
 }
