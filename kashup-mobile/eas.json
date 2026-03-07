@@ -24,20 +24,25 @@
       },
       "env": {
         "APP_ENV": "preview",
-        "EXPO_PUBLIC_API_URL": "https://kashupv0.vercel.app"
+        "EXPO_PUBLIC_API_URL": "https://kashupv0.vercel.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "758556847924-d9ne5v1vgp84ce22ec2hcgq7g0s5fgke.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "758556847924-5n9scfiippc1826rq4m2u2qba3830k3n.apps.googleusercontent.com"
       }
     },
     "production": {
+      "distribution": "internal",
       "autoIncrement": true,
       "ios": {
         "resourceClass": "m-medium"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "env": {
         "APP_ENV": "production",
-        "EXPO_PUBLIC_API_URL": "https://kashupv0.vercel.app"
+        "EXPO_PUBLIC_API_URL": "https://kashupv0.vercel.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "758556847924-d9ne5v1vgp84ce22ec2hcgq7g0s5fgke.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "758556847924-5n9scfiippc1826rq4m2u2qba3830k3n.apps.googleusercontent.com"
       }
     }
   }
