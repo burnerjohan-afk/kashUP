@@ -152,7 +152,7 @@ function getApiClient(): AxiosInstance {
   if (!axiosInstance) {
     axiosInstance = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 30000, // 30 secondes
+      timeout: 60000, // 60 s (cold start Vercel peut dépasser 30 s)
       headers: {
         'Content-Type': 'application/json',
       },
@@ -334,11 +334,15 @@ export async function apiClient<T>(
       // Sinon, créer une StandardResponse d'erreur
       const statusCode = error.response?.status || 500;
       let message = error.response?.data?.message || error.message || 'Une erreur réseau est survenue';
-      
+
       if (isTimeout) {
-        message = `L'API ne répond pas (timeout après 30s). Vérifiez que le serveur est démarré sur ${API_BASE_URL}`;
+        message = `Le serveur met trop de temps à répondre. Vérifiez votre connexion internet et réessayez.`;
+      } else if (isNetworkError || error.message === 'Network Error') {
+        message = `Impossible de joindre le serveur. Vérifiez votre connexion internet et réessayez.`;
+      } else if (isConnectionError) {
+        message = `Connexion interrompue. Vérifiez votre connexion internet et réessayez.`;
       }
-      
+
       return {
         statusCode,
         success: false,

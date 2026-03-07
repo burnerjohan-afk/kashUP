@@ -1,6 +1,18 @@
 # 🔍 Debug Network Error - Guide de dépannage
 
-## ✅ Configuration actuelle
+## ⚠️ Erreur "Network Error" à l'inscription/connexion sur Android
+
+### Cause la plus fréquente : Android bloque HTTP (cleartext)
+
+**Android 9+ bloque par défaut les requêtes HTTP** (non-HTTPS). Si votre API locale utilise `http://192.168.x.x:4000`, l’app ne peut pas s’y connecter.
+
+**✅ Solution appliquée** : `usesCleartextTraffic: true` a été ajouté dans `app.json` (plugin expo-build-properties). **Vous devez reconstruire l’app** pour que la modification soit prise en compte :
+- **Expo Go** : notre config n'est pas utilisée (Expo Go a son propre manifest). Si l'erreur persiste avec une API locale en HTTP, utilisez un **development build**.
+- **APK / development build** : reconstruisez pour appliquer la modif : `npx eas build --profile preview --platform android`
+
+---
+
+## ✅ Configuration actuelle (Expo Go / dev local)
 
 - **IP locale** : `192.168.1.23`
 - **Fichier .env** : `EXPO_PUBLIC_API_URL=http://192.168.1.23:4000`
@@ -95,6 +107,22 @@ app.listen(4000, '0.0.0.0', () => {
 Dans les logs, vérifiez si d'autres endpoints fonctionnent :
 - `/health` → Devrait fonctionner
 - `/partners` → Peut nécessiter une authentification
+
+### Erreur réseau à l'inscription (création de compte)
+
+Si vous voyez « Impossible de joindre le serveur » ou « Network error » en créant un compte :
+
+- **Avec l’APK (build EAS / production)**  
+  L’app appelle `https://kashupv0.vercel.app`. Vérifiez que :
+  1. L’API est bien déployée sur Vercel (ou l’hébergeur configuré).
+  2. L’URL répond : ouvrez `https://kashupv0.vercel.app/api/v1/health` dans un navigateur.
+  3. Le téléphone a bien internet (Wi‑Fi ou 4G). Si l'URL renvoie 404, l'API n'est peut‑être pas déployée.
+
+- **Avec Expo Go ou dev build + API locale (http://)**  
+  L’app utilise `EXPO_PUBLIC_API_URL` du fichier `.env.local` (ex. `http://192.168.x.x:4000`). Vérifiez que :
+  1. L’API tourne sur le PC (`npm run dev` dans `kashup-api`).
+  2. L’IP dans `.env.local` est celle du PC sur le même réseau que le téléphone.
+  3. Téléphone et PC sont sur le même Wi‑Fi.
 
 ## 📞 Informations à fournir pour le debug
 
