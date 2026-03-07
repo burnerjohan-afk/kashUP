@@ -336,11 +336,12 @@ export async function apiClient<T>(
       let message = error.response?.data?.message || error.message || 'Une erreur réseau est survenue';
 
       if (isTimeout) {
-        message = `Le serveur met trop de temps à répondre. Vérifiez votre connexion internet et réessayez.`;
+        message = `Le serveur met trop de temps à répondre (timeout). Réessayez dans quelques secondes — la première requête peut être lente.`;
       } else if (isNetworkError || error.message === 'Network Error') {
-        message = `Impossible de joindre le serveur. Vérifiez votre connexion internet et réessayez.`;
+        const codeHint = error.code ? ` (${error.code})` : '';
+        message = `Impossible de joindre le serveur${codeHint}. Appel vers : ${API_BASE_URL} — vérifiez que l’app utilise bien l’API de production.`;
       } else if (isConnectionError) {
-        message = `Connexion interrompue. Vérifiez votre connexion internet et réessayez.`;
+        message = `Connexion interrompue. Réessayez.`;
       }
 
       return {
