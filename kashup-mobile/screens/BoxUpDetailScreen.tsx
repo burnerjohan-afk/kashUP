@@ -25,7 +25,7 @@ import { useNotifications } from '../context/NotificationsContext';
 import { useRewards } from '@/src/hooks/useRewards';
 import { useWallet } from '@/src/hooks/useWallet';
 import { getGiftBoxById, sendBoxUp, createGiftCardPaymentIntent, confirmCardPaymentForGift, GiftBox } from '@/src/services/giftCardService';
-import { usePaymentSheet } from '@stripe/stripe-react-native';
+import { usePaymentSheet } from '../src/stubs/stripePaymentSheet';
 import { getPartners } from '@/src/services/partnerService';
 import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';

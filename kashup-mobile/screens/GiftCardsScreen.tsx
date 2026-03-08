@@ -41,7 +41,7 @@ import {
   GiftCardPurchase,
   type CarteUpLibre,
 } from '@/src/services/giftCardService';
-import { usePaymentSheet } from '@stripe/stripe-react-native';
+import { usePaymentSheet } from '../src/stubs/stripePaymentSheet';
 import { getPartners } from '@/src/services/partnerService';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';

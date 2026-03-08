@@ -62,13 +62,6 @@
           }
         }
       ],
-      [
-        "@stripe/stripe-react-native",
-        {
-          "merchantIdentifier": "merchant.com.kashup.mobile",
-          "enableGooglePay": true
-        }
-      ]
     ],
     "experiments": {
       "typedRoutes": true
