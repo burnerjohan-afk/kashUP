@@ -9,6 +9,7 @@ import { requestIdMiddleware } from './middlewares/requestId';
 import { apiRateLimiter } from './middlewares/rateLimiter';
 import router from './routes';
 import { sendSuccess } from './utils/response';
+import { uploadsDir } from './config/upload';
 
 export const createApp = () => {
   const app = express();
@@ -85,7 +86,7 @@ export const createApp = () => {
   
   // Servir les fichiers statiques (uploads) AVANT Helmet pour éviter les conflits
   // Important : doit être avant Helmet pour que Helmet ne s'applique pas aux fichiers statiques
-  const staticMiddleware = express.static('uploads', {
+  const staticMiddleware = express.static(uploadsDir, {
     setHeaders: (res, filePath) => {
       // Définir les headers appropriés pour les images
       const ext = filePath.split('.').pop()?.toLowerCase();

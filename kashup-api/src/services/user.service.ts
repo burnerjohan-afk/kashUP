@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomAlphanumeric } from '../utils/randomId';
 import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 import { safePrismaQuery } from '../utils/timeout';
@@ -148,7 +148,7 @@ const ensureReferral = async (userId: string) => {
   const defaultReferral = {
     id: 'default',
     userId,
-    code: `KUP-${nanoid(8).toUpperCase()}`,
+    code: `KUP-${randomAlphanumeric(8).toUpperCase()}`,
     rewardPoints: 0,
     createdAt: new Date()
   };
@@ -159,7 +159,7 @@ const ensureReferral = async (userId: string) => {
       update: {},
       create: {
         userId,
-        code: `KUP-${nanoid(8).toUpperCase()}`
+        code: `KUP-${randomAlphanumeric(8).toUpperCase()}`
       }
     }),
     defaultReferral,

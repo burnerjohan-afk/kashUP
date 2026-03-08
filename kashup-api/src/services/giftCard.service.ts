@@ -1,5 +1,5 @@
 import { addMonths } from 'date-fns';
-import { nanoid } from 'nanoid';
+import { randomAlphanumeric } from '../utils/randomId';
 import prisma from '../config/prisma';
 import {
   PurchaseGiftCardInput,
@@ -213,7 +213,7 @@ export const purchaseGiftCard = async (userId: string, input: PurchaseGiftCardIn
         beneficiaryEmail: input.beneficiaryEmail,
         message: input.message,
         amount,
-        code: `KUP-${nanoid(10).toUpperCase()}`,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
         expiresAt: addMonths(new Date(), 6)
       },
       include: {

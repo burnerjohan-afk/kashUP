@@ -1,10 +1,15 @@
 import multer from 'multer';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import os from 'os';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 
-// Créer le dossier uploads s'il n'existe pas
-const uploadsDir = path.join(process.cwd(), 'uploads');
+// Sur Vercel le filesystem est en lecture seule sauf /tmp — utiliser /tmp pour les uploads
+const isVercel = Boolean(process.env.VERCEL);
+export const uploadsDir = isVercel
+  ? path.join(os.tmpdir(), 'kashup-uploads')
+  : path.join(process.cwd(), 'uploads');
+
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
