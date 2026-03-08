@@ -1,4 +1,3 @@
-import path from 'path';
 import { Request, Response } from 'express';
 import {
   listHomeBannersForApp,
@@ -10,7 +9,7 @@ import {
 } from '../services/homeBanner.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
-import { getFileUrl } from '../config/upload';
+import { processUploadedFile } from '../services/upload.service';
 import { createHomeBannerSchema, updateHomeBannerSchema } from '../schemas/homeBanner.schema';
 import { buildAbsoluteUrl } from '../utils/network';
 
@@ -47,11 +46,6 @@ export const getHomeBanner = asyncHandler(async (req: Request, res: Response) =>
   sendSuccess(res, withAbsoluteMediaUrls(req, banner));
 });
 
-/** Construit l'URL d'image à partir du fichier réel (aligné avec l'emplacement Multer) */
-function getImageUrlFromFile(file: Express.Multer.File): string {
-  const relativePath = path.relative(process.cwd(), file.path);
-  return getFileUrl(relativePath);
-}
 
 /** Récupère le fichier image ou vidéo depuis req.files (upload .fields()) */
 function getFileFromFields(req: Request, field: 'image' | 'video'): Express.Multer.File | undefined {
@@ -64,10 +58,10 @@ function getFileFromFields(req: Request, field: 'image' | 'video'): Express.Mult
 export const createHomeBannerHandler = asyncHandler(async (req: Request, res: Response) => {
   const imageFile = getFileFromFields(req, 'image');
   const videoFile = getFileFromFields(req, 'video');
-  const imageUrlFromFile = imageFile ? getImageUrlFromFile(imageFile) : undefined;
+  const imageUrlFromFile = imageFile ? await processUploadedFile(imageFile, 'home-banners') : undefined;
   const imageUrlFromBody = typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() ? req.body.imageUrl.trim() : undefined;
   const imageUrl = imageUrlFromFile ?? imageUrlFromBody;
-  const videoUrlFromFile = videoFile ? getImageUrlFromFile(videoFile) : undefined;
+  const videoUrlFromFile = videoFile ? await processUploadedFile(videoFile, 'home-banners') : undefined;
 
   const payload = createHomeBannerSchema.parse({
     title: req.body.title,
@@ -92,8 +86,8 @@ export const updateHomeBannerHandler = asyncHandler(async (req: Request, res: Re
   const id = req.params.id;
   const imageFile = getFileFromFields(req, 'image');
   const videoFile = getFileFromFields(req, 'video');
-  const imageUrl = imageFile ? getImageUrlFromFile(imageFile) : undefined;
-  const videoUrl = videoFile ? getImageUrlFromFile(videoFile) : undefined;
+  const imageUrl = imageFile ? await processUploadedFile(imageFile, 'home-banners') : undefined;
+  const videoUrl = videoFile ? await processUploadedFile(videoFile, 'home-banners') : undefined;
   const body = {
     ...(req.body.title !== undefined && { title: req.body.title }),
     ...(req.body.mediaType !== undefined && { mediaType: req.body.mediaType }),

@@ -44,7 +44,7 @@ export const getAssociation = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const createAssociationHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'donations') : undefined;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'donations') : undefined;
   const payload = {
     nom: req.body.nom,
     type: req.body.type || 'autre',
@@ -61,7 +61,7 @@ export const createAssociationHandler = asyncHandler(async (req: Request, res: R
 });
 
 export const updateAssociationHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'donations') : undefined;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'donations') : undefined;
   const payload: Record<string, unknown> = {};
   if (req.body.nom !== undefined) payload.nom = req.body.nom;
   if (req.body.type !== undefined) payload.type = req.body.type;

@@ -37,7 +37,7 @@ export const createOfferHandler = asyncHandler(async (req: Request, res: Respons
 
   try {
     // Traiter les fichiers uploadés
-    const imageUrl = req.file ? processUploadedFile(req.file, 'offers') : req.body.imageUrl;
+    const imageUrl = req.file ? await processUploadedFile(req.file, 'offers') : req.body.imageUrl;
 
     // Parser les numériques (FormData envoie tout en string)
     const parseNum = (v: unknown, def: number): number => {
@@ -134,7 +134,7 @@ export const updateOfferHandler = asyncHandler(async (req: Request, res: Respons
 
   try {
     // Traiter les fichiers uploadés
-    const imageUrl = req.file ? processUploadedFile(req.file, 'offers') : req.body.imageUrl;
+    const imageUrl = req.file ? await processUploadedFile(req.file, 'offers') : req.body.imageUrl;
 
     // Convertir les types depuis multipart/form-data
     const processedData: any = {};

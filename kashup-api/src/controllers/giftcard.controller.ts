@@ -248,13 +248,13 @@ export const updateGiftCardConfigHandler = asyncHandler(async (req: Request, res
   const imageUrls: { giftCardImageUrl?: string; giftCardVirtualCardImageUrl?: string } = {};
   
   if (files.fields?.giftCardImage?.[0]) {
-    imageUrls.giftCardImageUrl = processUploadedFile(files.fields.giftCardImage[0], 'gift-cards');
+    imageUrls.giftCardImageUrl = await processUploadedFile(files.fields.giftCardImage[0], 'gift-cards');
   } else if (req.body.giftCardImageUrl) {
     imageUrls.giftCardImageUrl = req.body.giftCardImageUrl;
   }
 
   if (files.fields?.giftCardVirtualCardImage?.[0]) {
-    imageUrls.giftCardVirtualCardImageUrl = processUploadedFile(files.fields.giftCardVirtualCardImage[0], 'gift-cards');
+    imageUrls.giftCardVirtualCardImageUrl = await processUploadedFile(files.fields.giftCardVirtualCardImage[0], 'gift-cards');
   } else if (req.body.giftCardVirtualCardImageUrl) {
     imageUrls.giftCardVirtualCardImageUrl = req.body.giftCardVirtualCardImageUrl;
   }
@@ -269,7 +269,7 @@ export const getBoxUpConfigHandler = asyncHandler(async (_req: Request, res: Res
 });
 
 export const createOrUpdateBoxUpConfigHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : req.body.boxUpImageUrl;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'gift-cards') : req.body.boxUpImageUrl;
   
   const config = await createOrUpdateBoxUpConfig(req.body, imageUrl);
   sendSuccess(res, config);
@@ -297,7 +297,7 @@ export const getBoxUpByIdHandler = asyncHandler(async (req: Request, res: Respon
 });
 
 export const createBoxUpHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : undefined;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'gift-cards') : undefined;
   const payload = {
     nom: req.body.nom,
     description: req.body.description,
@@ -318,7 +318,7 @@ export const createBoxUpHandler = asyncHandler(async (req: Request, res: Respons
 });
 
 export const updateBoxUpHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : req.body.imageUrl;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'gift-cards') : req.body.imageUrl;
   const payload: any = {};
   if (req.body.nom !== undefined) payload.nom = req.body.nom;
   if (req.body.description !== undefined) payload.description = req.body.description;
@@ -375,7 +375,7 @@ export const getCarteUpLibreByIdHandler = asyncHandler(async (req: Request, res:
 });
 
 export const createCarteUpLibreHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : undefined;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'gift-cards') : undefined;
   const payload = {
     nom: req.body.nom,
     description: req.body.description,
@@ -395,7 +395,7 @@ export const createCarteUpLibreHandler = asyncHandler(async (req: Request, res: 
 });
 
 export const updateCarteUpLibreHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'gift-cards') : undefined;
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'gift-cards') : undefined;
   const payload: Record<string, unknown> = {};
   if (req.body.nom !== undefined) payload.nom = req.body.nom;
   if (req.body.description !== undefined) payload.description = req.body.description;
@@ -429,7 +429,7 @@ export const getCarteUpPredefinieByIdHandler = asyncHandler(async (req: Request,
 
 export const createCarteUpPredefinieHandler = asyncHandler(async (req: Request, res: Response) => {
   const imageUrl = req.file
-    ? processUploadedFile(req.file, 'gift-cards')
+    ? await processUploadedFile(req.file, 'gift-cards')
     : (typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() !== '' ? req.body.imageUrl.trim() : undefined);
   const montant = Number(req.body.montant);
   if (!Number.isFinite(montant) || montant <= 0) {
@@ -457,7 +457,7 @@ export const createCarteUpPredefinieHandler = asyncHandler(async (req: Request, 
 
 export const updateCarteUpPredefinieHandler = asyncHandler(async (req: Request, res: Response) => {
   const imageUrl = req.file
-    ? processUploadedFile(req.file, 'gift-cards')
+    ? await processUploadedFile(req.file, 'gift-cards')
     : (typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() !== '' ? req.body.imageUrl.trim() : undefined);
   const payload: Record<string, unknown> = {};
   if (req.body.nom !== undefined) payload.nom = req.body.nom;

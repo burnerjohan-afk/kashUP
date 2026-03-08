@@ -90,7 +90,7 @@ export const getRewardsByType = asyncHandler(async (req: Request, res: Response)
 });
 
 export const createRewardHandler = asyncHandler(async (req: Request, res: Response) => {
-  const imageUrl = req.file ? processUploadedFile(req.file, 'rewards') : (req.body.imageUrl as string | undefined);
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'rewards') : (req.body.imageUrl as string | undefined);
   const processed = { ...parseRewardBody(req.body as Record<string, unknown>), imageUrl: imageUrl || req.body.imageUrl || undefined };
   const result = rewardFormSchema.safeParse(processed);
   if (!result.success) {
@@ -108,7 +108,7 @@ export const updateRewardHandler = asyncHandler(async (req: Request, res: Respon
   if (!type) {
     throw new AppError('Type de récompense requis', 400);
   }
-  const imageUrl = req.file ? processUploadedFile(req.file, 'rewards') : (req.body.imageUrl as string | undefined);
+  const imageUrl = req.file ? await processUploadedFile(req.file, 'rewards') : (req.body.imageUrl as string | undefined);
   const processed = { ...parseRewardBody(req.body as Record<string, unknown>), imageUrl: imageUrl || req.body.imageUrl || undefined };
   const result = updateRewardFormSchema.safeParse(processed);
   if (!result.success) {

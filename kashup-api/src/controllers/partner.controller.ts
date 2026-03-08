@@ -1257,7 +1257,7 @@ export const updatePartnerHandler = asyncHandler(async (req: Request, res: Respo
       logger.error({ path: logoFile.path }, '❌ Fichier logo N\'EXISTE PAS sur le disque');
     }
     
-    logoUrl = processUploadedFile(logoFile, 'partners', partnerId);
+    logoUrl = await processUploadedFile(logoFile, 'partners', partnerId) ?? undefined;
     logger.info({ logoUrl, mimetype: logoFile.mimetype, size: logoFile.size }, '✅ Logo traité pour mise à jour');
   } else if (req.body.logoUrl) {
     // Vérifier que logoUrl du body est valide (relative ou absolue)
@@ -1275,21 +1275,21 @@ export const updatePartnerHandler = asyncHandler(async (req: Request, res: Respo
   }
   
   if (kbisFile) {
-    kbisUrl = processUploadedFile(kbisFile, 'partners', partnerId);
+    kbisUrl = (await processUploadedFile(kbisFile, 'partners', partnerId)) ?? undefined;
     logger.info({ kbisUrl }, '✅ KBIS traité pour mise à jour');
   } else if (req.body.kbisUrl) {
     kbisUrl = req.body.kbisUrl;
   }
   
   if (menuImageFiles.length > 0) {
-    menuImages = processUploadedFiles(menuImageFiles, 'partners', partnerId);
+    menuImages = await processUploadedFiles(menuImageFiles, 'partners', partnerId);
     logger.info({ count: menuImages.length }, '✅ Menu images traitées pour mise à jour');
   } else if (req.body.menuImages) {
     menuImages = Array.isArray(req.body.menuImages) ? req.body.menuImages : undefined;
   }
   
   if (photoFiles.length > 0) {
-    photos = processUploadedFiles(photoFiles, 'partners', partnerId);
+    photos = await processUploadedFiles(photoFiles, 'partners', partnerId);
     logger.info({ count: photos.length }, '✅ Photos traitées pour mise à jour');
   } else if (req.body.photos) {
     photos = Array.isArray(req.body.photos) ? req.body.photos : undefined;

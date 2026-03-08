@@ -1,58 +1,83 @@
 import path from 'path';
+import fs from 'fs';
+import { put } from '@vercel/blob';
 import { getFileUrl } from '../config/upload';
 
+const isVercel = Boolean(process.env.VERCEL);
+const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
+function shouldUseBlob(): boolean {
+  return isVercel && hasBlobToken;
+}
+
 /**
- * Traite un fichier uploadé et retourne son URL
- * @param file - Fichier Multer
- * @param type - Type de fichier (partners, offers, etc.)
- * @param entityId - ID de l'entité (optionnel, pour créer uploads/partners/:id)
+ * Upload un fichier vers Vercel Blob (sur Vercel uniquement).
+ * Retourne l'URL publique du fichier.
  */
-export const processUploadedFile = (
-  file: Express.Multer.File | undefined, 
+async function uploadToBlob(
+  file: Express.Multer.File,
+  blobPath: string
+): Promise<string> {
+  const buffer = fs.readFileSync(file.path);
+  const blob = await put(blobPath, buffer, {
+    access: 'public',
+    contentType: file.mimetype || undefined,
+  });
+  return blob.url;
+}
+
+/**
+ * Traite un fichier uploadé et retourne son URL.
+ * Sur Vercel avec BLOB_READ_WRITE_TOKEN : upload vers Vercel Blob.
+ * Sinon : URL locale /uploads/...
+ */
+export async function processUploadedFile(
+  file: Express.Multer.File | undefined,
   type: string = 'general',
   entityId?: string
-): string | undefined => {
+): Promise<string | undefined> {
   if (!file) {
     return undefined;
   }
 
-  // Construire le chemin relatif
-  // Si entityId est fourni et que c'est un partenaire, utiliser uploads/partners/:id
+  if (shouldUseBlob()) {
+    const blobPath =
+      type === 'partners' && entityId
+        ? `uploads/${type}/${entityId}/${file.filename}`
+        : `uploads/${type}/${file.filename}`;
+    try {
+      const url = await uploadToBlob(file, blobPath);
+      return url;
+    } catch (err) {
+      console.error('[upload] Erreur Blob:', err);
+      throw err;
+    }
+  }
+
   let relativePath: string;
   if (type === 'partners' && entityId) {
     relativePath = path.join('uploads', type, entityId, file.filename);
   } else {
     relativePath = path.join('uploads', type, file.filename);
   }
-  
   return getFileUrl(relativePath);
-};
+}
 
 /**
  * Traite plusieurs fichiers uploadés
- * @param files - Tableau de fichiers Multer
- * @param type - Type de fichier (partners, offers, etc.)
- * @param entityId - ID de l'entité (optionnel, pour créer uploads/partners/:id)
  */
-export const processUploadedFiles = (
-  files: Express.Multer.File[] | undefined, 
+export async function processUploadedFiles(
+  files: Express.Multer.File[] | undefined,
   type: string = 'general',
   entityId?: string
-): string[] => {
+): Promise<string[]> {
   if (!files || files.length === 0) {
     return [];
   }
-
-  return files.map(file => {
-    let relativePath: string;
-    if (type === 'partners' && entityId) {
-      relativePath = path.join('uploads', type, entityId, file.filename);
-    } else {
-      relativePath = path.join('uploads', type, file.filename);
-    }
-    return getFileUrl(relativePath);
-  });
-};
+  return Promise.all(
+    files.map((file) => processUploadedFile(file, type, entityId))
+  ).then((urls) => urls.filter((u): u is string => u != null));
+}
 
 /**
  * Extrait les fichiers d'une requête multer
