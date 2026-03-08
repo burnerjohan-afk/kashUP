@@ -23,6 +23,7 @@ import badgesRoutes from './badges.routes';
 import lotteriesRoutes from './lotteries.routes';
 import boxupsRoutes from './boxups.routes';
 import carteupsRoutes from './carteups.routes';
+import blobRoutes from './blob.routes';
 
 const router = Router();
 
@@ -43,6 +44,7 @@ router.use('/badges', badgesRoutes);
 router.use('/lotteries', lotteriesRoutes);
 router.use('/boxups', boxupsRoutes);
 router.use('/carteups', carteupsRoutes);
+router.use('/', blobRoutes); // GET /blob?url=... (proxy images Blob privé)
 
 // Routes autres ressources
 router.use('/offers', offersRoutes);

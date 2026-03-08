@@ -1,13 +1,24 @@
 /**
  * Normalise les URLs d'images
- * - Si image commence par http => OK
+ * - Si image commence par http => OK (sauf Blob Vercel privé → proxy API)
  * - Si commence par "/uploads/" => return apiOrigin + imagePath
  * - Si null => placeholder
  */
 
-import { apiOrigin } from '../config/runtime';
+import { apiOrigin, apiBaseUrl } from '../config/runtime';
 
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/400x300/F5F5F5/CCCCCC?text=Image+non+disponible';
+const BLOB_HOST = 'blob.vercel-storage.com';
+
+/**
+ * Si l'URL pointe vers un Blob Vercel (store privé), retourne l'URL du proxy API.
+ */
+function proxyBlobUrlIfNeeded(url: string): string {
+  if (url.includes(BLOB_HOST)) {
+    return `${apiBaseUrl}/blob?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
 
 /**
  * Normalise une URL d'image
@@ -22,9 +33,9 @@ export function normalizeImageUrl(imagePath: string | null | undefined): string 
 
   const trimmed = imagePath.trim();
 
-  // Si déjà une URL complète (http/https), retourner tel quel
+  // Si déjà une URL complète (http/https) : utiliser le proxy pour les Blob privés
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
+    return proxyBlobUrlIfNeeded(trimmed);
   }
 
   // Si commence par "/uploads/" ou "/", construire l'URL complète
