@@ -20,7 +20,7 @@ async function uploadToBlob(
 ): Promise<string> {
   const buffer = fs.readFileSync(file.path);
   const blob = await put(blobPath, buffer, {
-    access: 'public',
+    access: 'private',
     contentType: file.mimetype || undefined,
   });
   return blob.url;

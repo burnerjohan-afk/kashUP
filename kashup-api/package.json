@@ -11,6 +11,7 @@
     "test:partner": "tsx scripts/test-partner-creation.ts",
     "check:setup": "tsx scripts/check-setup.ts",
     "migrate:sqlite-to-postgres": "tsx scripts/migrate-sqlite-to-postgres.ts",
+    "migrate:uploads-to-blob": "tsx scripts/migrate-uploads-to-blob.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:seed": "prisma db seed",
