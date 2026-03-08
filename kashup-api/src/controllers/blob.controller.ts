@@ -32,7 +32,8 @@ export async function getBlobProxy(req: Request, res: Response): Promise<void> {
     }
     res.setHeader('Content-Type', result.blob.contentType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400'); // 24h
-    const nodeStream = Readable.fromWeb(result.stream as import('stream').WebReadableStream<Uint8Array>);
+    // Readable.fromWeb attend un ReadableStream Web API (compatible Node 18+)
+    const nodeStream = Readable.fromWeb(result.stream as Parameters<typeof Readable.fromWeb>[0]);
     nodeStream.pipe(res);
   } catch (err) {
     console.error('[blob] Erreur proxy:', err);
