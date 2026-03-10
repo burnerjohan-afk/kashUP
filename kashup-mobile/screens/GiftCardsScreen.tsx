@@ -120,6 +120,85 @@ const BACKGROUND_COLORS_CARTE = [
   { id: 'lavande', label: 'Lavande', value: '#ede7f6' },
 ];
 
+/** Grille de couleurs étendue pour macarons (presets + palette) */
+const MACARON_PALETTE_GRID: Array<{ id: string; value: string }> = [
+  ...MACARON_COLORS_CARTE,
+  { id: '#e74c3c', value: '#e74c3c' },
+  { id: '#c0392b', value: '#c0392b' },
+  { id: '#e67e22', value: '#e67e22' },
+  { id: '#d35400', value: '#d35400' },
+  { id: '#f39c12', value: '#f39c12' },
+  { id: '#f1c40f', value: '#f1c40f' },
+  { id: '#2ecc71', value: '#2ecc71' },
+  { id: '#27ae60', value: '#27ae60' },
+  { id: '#1abc9c', value: '#1abc9c' },
+  { id: '#16a085', value: '#16a085' },
+  { id: '#3498db', value: '#3498db' },
+  { id: '#2980b9', value: '#2980b9' },
+  { id: '#9b59b6', value: '#9b59b6' },
+  { id: '#8e44ad', value: '#8e44ad' },
+  { id: '#e91e63', value: '#e91e63' },
+  { id: '#c2185b', value: '#c2185b' },
+  { id: '#009688', value: '#009688' },
+  { id: '#795548', value: '#795548' },
+  { id: '#5d4037', value: '#5d4037' },
+  { id: '#607d8b', value: '#607d8b' },
+  { id: '#455a64', value: '#455a64' },
+  { id: '#37474f', value: '#37474f' },
+  { id: '#263238', value: '#263238' },
+  { id: '#ff5722', value: '#ff5722' },
+  { id: '#ff9800', value: '#ff9800' },
+  { id: '#ffeb3b', value: '#ffeb3b' },
+  { id: '#8bc34a', value: '#8bc34a' },
+  { id: '#4caf50', value: '#4caf50' },
+  { id: '#03a9f4', value: '#03a9f4' },
+  { id: '#2196f3', value: '#2196f3' },
+  { id: '#3f51b5', value: '#3f51b5' },
+  { id: '#673ab7', value: '#673ab7' },
+  { id: '#9c27b0', value: '#9c27b0' },
+  { id: '#f44336', value: '#f44336' },
+];
+
+/** Grille de couleurs étendue pour fond de carte (presets + palette vive) */
+const BACKGROUND_PALETTE_GRID: Array<{ id: string; value: string }> = [
+  ...BACKGROUND_COLORS_CARTE,
+  { id: '#bbdefb', value: '#bbdefb' },
+  { id: '#90caf9', value: '#90caf9' },
+  { id: '#64b5f6', value: '#64b5f6' },
+  { id: '#b3e5fc', value: '#b3e5fc' },
+  { id: '#81d4fa', value: '#81d4fa' },
+  { id: '#b2ebf2', value: '#b2ebf2' },
+  { id: '#80deea', value: '#80deea' },
+  { id: '#c8e6c9', value: '#c8e6c9' },
+  { id: '#a5d6a7', value: '#a5d6a7' },
+  { id: '#81c784', value: '#81c784' },
+  { id: '#b2dfdb', value: '#b2dfdb' },
+  { id: '#80cbc4', value: '#80cbc4' },
+  { id: '#f8bbd9', value: '#f8bbd9' },
+  { id: '#f48fb1', value: '#f48fb1' },
+  { id: '#f06292', value: '#f06292' },
+  { id: '#ffccbc', value: '#ffccbc' },
+  { id: '#ffab91', value: '#ffab91' },
+  { id: '#ffe0b2', value: '#ffe0b2' },
+  { id: '#ffcc80', value: '#ffcc80' },
+  { id: '#fff9c4', value: '#fff9c4' },
+  { id: '#fff59d', value: '#fff59d' },
+  { id: '#d1c4e9', value: '#d1c4e9' },
+  { id: '#b39ddb', value: '#b39ddb' },
+  { id: '#9575cd', value: '#9575cd' },
+  { id: '#e1bee7', value: '#e1bee7' },
+  { id: '#ce93d8', value: '#ce93d8' },
+  { id: '#c5cae9', value: '#c5cae9' },
+  { id: '#9fa8da', value: '#9fa8da' },
+  { id: '#b0bec5', value: '#b0bec5' },
+  { id: '#cfd8dc', value: '#cfd8dc' },
+  { id: '#ffecb3', value: '#ffecb3' },
+  { id: '#ffe082', value: '#ffe082' },
+  { id: '#d7ccc8', value: '#d7ccc8' },
+  { id: '#bcaaa4', value: '#bcaaa4' },
+  { id: '#ffb74d', value: '#ffb74d' },
+];
+
 /** Polices pour la carte test (aligné back office) */
 const FONT_OPTIONS_CARTE = [
   { id: 'dancing', label: 'Festive', fontFamily: undefined as string | undefined, fontStyle: 'italic' as const, fontWeight: '600' as const },
@@ -221,6 +300,8 @@ export default function GiftCardsScreen() {
   const [selectionMacaronColorId, setSelectionMacaronColorId] = useState(MACARON_COLORS_CARTE[0].id);
   const [selectionBackgroundColorId, setSelectionBackgroundColorId] = useState(BACKGROUND_COLORS_CARTE[0].id);
   const [macaronDropdownOpen, setMacaronDropdownOpen] = useState(false);
+  const [showMacaronPalette, setShowMacaronPalette] = useState(false);
+  const [showBackgroundPalette, setShowBackgroundPalette] = useState(false);
 
 const [predefinedModalVisible, setPredefinedModalVisible] = useState(false);
 const [selectedPredefinedGift, setSelectedPredefinedGift] = useState<GiftCardOffer | null>(null);
@@ -242,8 +323,6 @@ const [selectionUpConfig, setSelectionUpConfig] = useState<CarteUpLibre[]>([]);
   const [selectionUpPartners, setSelectionUpPartners] = useState<Partner[]>([]);
 const [contentLoading, setContentLoading] = useState(false);
 const [contentError, setContentError] = useState<string | null>(null);
-  const [openAQuoiCaSert, setOpenAQuoiCaSert] = useState(false);
-  const [openCommentCaMarche, setOpenCommentCaMarche] = useState(false);
 
   const {
     data: giftCardData,
@@ -473,10 +552,10 @@ const [contentError, setContentError] = useState<string | null>(null);
     const fontStyle = fontOpt.fontStyle ?? 'normal';
     const fontWeight = fontOpt.fontWeight ?? '600';
     const textColor = TEXT_COLORS_CARTE.find((c) => c.id === selectionTextColorId)?.value ?? '#1a1a2e';
-    const bgColor = BACKGROUND_COLORS_CARTE.find((c) => c.id === selectionBackgroundColorId)?.value ?? '#ffffff';
+    const bgColor = BACKGROUND_PALETTE_GRID.find((c) => c.id === selectionBackgroundColorId)?.value ?? '#ffffff';
     const macaronBgColor =
-      (MACARON_COLORS_CARTE.find((c) => c.id === selectionMacaronColorId)?.value ?? '#047857').trim().startsWith('#')
-        ? (MACARON_COLORS_CARTE.find((c) => c.id === selectionMacaronColorId)?.value ?? '#047857').trim()
+      (MACARON_PALETTE_GRID.find((c) => c.id === selectionMacaronColorId)?.value ?? '#047857').trim().startsWith('#')
+        ? (MACARON_PALETTE_GRID.find((c) => c.id === selectionMacaronColorId)?.value ?? '#047857').trim()
         : '#047857';
     const imageUrlForPdf =
       selectionImageUri && (selectionImageUri.startsWith('http://') || selectionImageUri.startsWith('https://'))
@@ -873,32 +952,7 @@ const [contentError, setContentError] = useState<string | null>(null);
         <ActivityIndicator color={colors.primaryPurple} style={{ marginVertical: spacing.lg }} />
       ) : (
         <>
-          {selectionUpConfig.length === 0 ? (
-            <>
-              <View style={[styles.purchaseCard, styles.accordionCard, { marginBottom: spacing.sm }]}>
-                <TouchableOpacity style={styles.accordionHeader} onPress={() => setOpenAQuoiCaSert((v) => !v)} activeOpacity={0.7}>
-                  <Text style={styles.explainTitle}>À quoi ça sert ?</Text>
-                  <Ionicons name={openAQuoiCaSert ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-                {openAQuoiCaSert && (
-                  <Text style={[styles.offerSubtitle, { marginTop: spacing.xs }]}>
-                    La Carte Sélection UP vous permet d'offrir un bon d'achat personnalisé : vous choisissez le partenaire, le montant, un message, une image et un macaron (anniversaire, fête, etc.). Le bénéficiaire reçoit une carte cadeau unique, utilisable chez le partenaire sélectionné.
-                  </Text>
-                )}
-              </View>
-              <View style={[styles.purchaseCard, styles.accordionCard, { marginBottom: spacing.md }]}>
-                <TouchableOpacity style={styles.accordionHeader} onPress={() => setOpenCommentCaMarche((v) => !v)} activeOpacity={0.7}>
-                  <Text style={styles.explainTitle}>Comment ça marche ?</Text>
-                  <Ionicons name={openCommentCaMarche ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-                {openCommentCaMarche && (
-                  <Text style={[styles.offerSubtitle, { marginTop: spacing.xs }]}>
-                    1) Choisissez un partenaire dans la liste.{'\n'}2) Saisissez le montant du bon.{'\n'}3) Ajoutez un message et, si vous le souhaitez, une image et un macaron.{'\n'}4) Prévisualisez le rendu, puis indiquez les coordonnées du bénéficiaire et envoyez la carte par e-mail.
-                  </Text>
-                )}
-              </View>
-            </>
-          ) : (
+          {selectionUpConfig.length === 0 ? null : (
             (selectionUpConfigActive ? [selectionUpConfigActive] : selectionUpConfig).map((config) => (
               <View key={config.id} style={[styles.purchaseCard, { marginBottom: spacing.lg }]}>
                 <Text style={[styles.sectionLabel, { marginBottom: 8 }]}>Configuration Carte Sélection UP</Text>
@@ -964,7 +1018,7 @@ const [contentError, setContentError] = useState<string | null>(null);
       <View
             style={[
               styles.carteTestPreview,
-              { backgroundColor: BACKGROUND_COLORS_CARTE.find((c) => c.id === selectionBackgroundColorId)?.value ?? '#ffffff' },
+              { backgroundColor: BACKGROUND_PALETTE_GRID.find((c) => c.id === selectionBackgroundColorId)?.value ?? '#ffffff' },
             ]}>
             {selectionImageUri ? (
               <View style={styles.carteTestImageWrap}>
@@ -1015,7 +1069,7 @@ const [contentError, setContentError] = useState<string | null>(null);
                       style={[
                         styles.carteTestMacaron,
                         {
-                          backgroundColor: MACARON_COLORS_CARTE.find((c) => c.id === selectionMacaronColorId)?.value ?? colors.primary,
+                          backgroundColor: MACARON_PALETTE_GRID.find((c) => c.id === selectionMacaronColorId)?.value ?? colors.primary,
                         },
                       ]}>
                       <Text style={styles.carteTestMacaronText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -1053,34 +1107,6 @@ const [contentError, setContentError] = useState<string | null>(null);
         value={personalAmount}
         onChangeText={setPersonalAmount}
       />
-      <Text style={styles.sectionLabel}>Message (texte)</Text>
-      <TextInput
-        style={[styles.input, styles.inputMultiline]}
-        placeholder="Un mot doux pour accompagner la carte"
-        multiline
-        value={personalMessage}
-        onChangeText={setPersonalMessage}
-      />
-      <Text style={styles.sectionLabel}>Image</Text>
-      <View style={styles.imagePickerRow}>
-        <TouchableOpacity style={styles.imagePickerButton} onPress={pickSelectionImage}>
-          <Ionicons name="image-outline" size={22} color={colors.primaryPurple} />
-          <Text style={styles.imagePickerButtonText}>
-            {selectionImageUri ? "Changer l'image" : 'Choisir une image'}
-          </Text>
-        </TouchableOpacity>
-        {selectionImageUri ? (
-          <TouchableOpacity style={styles.imagePickerRemove} onPress={() => setSelectionImageUri(null)}>
-            <Ionicons name="close-circle" size={22} color={colors.textSecondary} />
-            <Text style={styles.imagePickerRemoveText}>Supprimer</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-      {selectionImageUri ? (
-        <View style={styles.imagePickerPreviewWrap}>
-          <Image source={{ uri: selectionImageUri }} style={styles.imagePickerPreview} resizeMode="cover" />
-        </View>
-      ) : null}
       <Text style={styles.sectionLabel}>Macaron</Text>
       <View style={styles.macaronDropdownWrap}>
         <TouchableOpacity
@@ -1151,6 +1177,34 @@ const [contentError, setContentError] = useState<string | null>(null);
           />
         </View>
       )}
+      <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Message (texte)</Text>
+      <TextInput
+        style={[styles.input, styles.inputMultiline]}
+        placeholder="Un mot doux pour accompagner la carte"
+        multiline
+        value={personalMessage}
+        onChangeText={setPersonalMessage}
+      />
+      <Text style={styles.sectionLabel}>Image</Text>
+      <View style={styles.imagePickerRow}>
+        <TouchableOpacity style={styles.imagePickerButton} onPress={pickSelectionImage}>
+          <Ionicons name="image-outline" size={22} color={colors.primaryPurple} />
+          <Text style={styles.imagePickerButtonText}>
+            {selectionImageUri ? "Changer l'image" : 'Choisir une image'}
+          </Text>
+        </TouchableOpacity>
+        {selectionImageUri ? (
+          <TouchableOpacity style={styles.imagePickerRemove} onPress={() => setSelectionImageUri(null)}>
+            <Ionicons name="close-circle" size={22} color={colors.textSecondary} />
+            <Text style={styles.imagePickerRemoveText}>Supprimer</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {selectionImageUri ? (
+        <View style={styles.imagePickerPreviewWrap}>
+          <Image source={{ uri: selectionImageUri }} style={styles.imagePickerPreview} resizeMode="cover" />
+        </View>
+      ) : null}
       <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Style de la carte</Text>
       <Text style={[styles.offerSubtitle, { marginBottom: 12 }]}>
         Police et couleurs (l'aperçu ci‑dessus se met à jour en direct).
@@ -1185,33 +1239,61 @@ const [contentError, setContentError] = useState<string | null>(null);
           })}
         </View>
         <Text style={styles.colorBlockLabel}>Macaron</Text>
-        <View style={styles.colorSwatchRow}>
-          {MACARON_COLORS_CARTE.map((c) => {
+        <View style={styles.colorPaletteRow}>
+          <View style={[styles.colorSwatchGridItem, { backgroundColor: MACARON_PALETTE_GRID.find((x) => x.id === selectionMacaronColorId)?.value ?? colors.primary }]} />
+          <TouchableOpacity style={styles.colorPaletteToggle} onPress={() => setShowMacaronPalette((v) => !v)}>
+            <Text style={styles.colorPaletteToggleText}>{showMacaronPalette ? 'Masquer les couleurs' : 'Choisir une couleur'}</Text>
+            <Ionicons name={showMacaronPalette ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primaryPurple} />
+          </TouchableOpacity>
+        </View>
+        {showMacaronPalette && (
+          <View style={styles.colorSwatchGrid}>
+{MACARON_PALETTE_GRID.map((c, i) => {
             const active = selectionMacaronColorId === c.id;
-            const swatchColor = c.value;
             return (
               <TouchableOpacity
-                key={c.id}
-                onPress={() => setSelectionMacaronColorId(c.id)}
-                style={[styles.colorSwatch, { backgroundColor: swatchColor }, active && styles.colorSwatchActive]}
-              />
-            );
-          })}
-        </View>
+                key={`macaron-${i}-${c.id}`}
+                  onPress={() => setSelectionMacaronColorId(c.id)}
+                  style={[styles.colorSwatchGridItem, { backgroundColor: c.value }, active && styles.colorSwatchGridItemActive]}
+                >
+                  {active ? (
+                    <View style={styles.colorSwatchCheckWrap}>
+                      <Ionicons name="checkmark" size={14} color="#fff" style={styles.colorSwatchCheck} />
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
         <Text style={styles.colorBlockLabel}>Fond</Text>
-        <View style={styles.colorSwatchRow}>
-          {BACKGROUND_COLORS_CARTE.map((c) => {
+        <View style={styles.colorPaletteRow}>
+          <View style={[styles.colorSwatchGridItem, { backgroundColor: BACKGROUND_PALETTE_GRID.find((x) => x.id === selectionBackgroundColorId)?.value ?? '#ffffff' }]} />
+          <TouchableOpacity style={styles.colorPaletteToggle} onPress={() => setShowBackgroundPalette((v) => !v)}>
+            <Text style={styles.colorPaletteToggleText}>{showBackgroundPalette ? 'Masquer les couleurs' : 'Choisir une couleur'}</Text>
+            <Ionicons name={showBackgroundPalette ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primaryPurple} />
+          </TouchableOpacity>
+        </View>
+        {showBackgroundPalette && (
+          <View style={styles.colorSwatchGrid}>
+{BACKGROUND_PALETTE_GRID.map((c, i) => {
             const active = selectionBackgroundColorId === c.id;
-            const swatchColor = c.value;
             return (
               <TouchableOpacity
-                key={c.id}
+                key={`bg-${i}-${c.id}`}
                 onPress={() => setSelectionBackgroundColorId(c.id)}
-                style={[styles.colorSwatch, { backgroundColor: swatchColor }, active && styles.colorSwatchActive]}
-              />
-            );
-          })}
-        </View>
+                  style={[styles.colorSwatchGridItem, { backgroundColor: c.value }, active && styles.colorSwatchGridItemActive]}
+                >
+                  {active ? (
+                    <View style={styles.colorSwatchCheckWrap}>
+                      <Ionicons name="checkmark" size={14} color="#333" style={styles.colorSwatchCheck} />
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </View>
       <Text style={styles.sectionLabel}>Nom du bénéficiaire</Text>
       <TextInput
@@ -1253,51 +1335,7 @@ const [contentError, setContentError] = useState<string | null>(null);
         <ActivityIndicator color={colors.primaryPurple} style={{ marginVertical: spacing.lg }} />
       ) : (
         <>
-          {selectionUpConfig.length === 0 ? (
-            <>
-              <View style={[styles.purchaseCard, styles.accordionCard, { marginBottom: spacing.sm }]}>
-                <TouchableOpacity
-                  style={styles.accordionHeader}
-                  onPress={() => setOpenAQuoiCaSert((v) => !v)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.explainTitle}>À quoi ça sert ?</Text>
-                  <Ionicons
-                    name={openAQuoiCaSert ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-                {openAQuoiCaSert && (
-                  <Text style={[styles.offerSubtitle, { marginTop: spacing.xs }]}>
-                La Carte Sélection UP vous permet d’offrir un bon d’achat personnalisé : vous choisissez le partenaire, le montant, un message, une image et un macaron (anniversaire, fête, etc.). Le bénéficiaire reçoit une carte cadeau unique, utilisable chez le partenaire sélectionné.
-                  </Text>
-                )}
-              </View>
-              <View style={[styles.purchaseCard, styles.accordionCard, { marginBottom: spacing.md }]}>
-                <TouchableOpacity
-                  style={styles.accordionHeader}
-                  onPress={() => setOpenCommentCaMarche((v) => !v)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.explainTitle}>Comment ça marche ?</Text>
-                <Ionicons
-                  name={openCommentCaMarche ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-              {openCommentCaMarche && (
-                <Text style={[styles.offerSubtitle, { marginTop: spacing.xs }]}>
-                  1) Choisissez un partenaire (pour l’affichage de la carte).{'\n'}
-                  2) Saisissez le montant que vous payez à KashUP — c’est la valeur de la carte offerte.{'\n'}
-                  3) Ajoutez un message et, si vous le souhaitez, une image et un macaron (ex. « Joyeux anniversaire »).{'\n'}
-                  4) Choisissez le mode d’envoi : télécharger/envoyer en PDF par e-mail, ou envoyer directement dans l’app (notification KashUP).
-                </Text>
-              )}
-              </View>
-            </>
-          ) : (
+          {selectionUpConfig.length === 0 ? null : (
             (selectionUpConfigActive ? [selectionUpConfigActive] : selectionUpConfig).map((config) => (
               <View key={config.id} style={[styles.purchaseCard, { marginBottom: spacing.lg }]}>
                 <Text style={[styles.sectionLabel, { marginBottom: 8 }]}>Configuration Carte Sélection UP</Text>
@@ -1363,7 +1401,7 @@ const [contentError, setContentError] = useState<string | null>(null);
               styles.carteTestPreview,
               {
                 backgroundColor:
-                  BACKGROUND_COLORS_CARTE.find((c) => c.id === selectionBackgroundColorId)?.value ?? '#ffffff',
+                  BACKGROUND_PALETTE_GRID.find((c) => c.id === selectionBackgroundColorId)?.value ?? '#ffffff',
               },
             ]}>
             {selectionImageUri ? (
@@ -1416,7 +1454,7 @@ const [contentError, setContentError] = useState<string | null>(null);
                         styles.carteTestMacaron,
                         {
                           backgroundColor:
-                            MACARON_COLORS_CARTE.find((c) => c.id === selectionMacaronColorId)?.value ?? colors.primary,
+                            MACARON_PALETTE_GRID.find((c) => c.id === selectionMacaronColorId)?.value ?? colors.primary,
                         },
                       ]}>
                       <Text style={styles.carteTestMacaronText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -1622,7 +1660,7 @@ const [contentError, setContentError] = useState<string | null>(null);
             },
           ]}
           stickyHeaderIndices={
-            activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? [contentError ? 4 : 3] : []
+            activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? [7] : []
           }
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -1635,11 +1673,13 @@ const [contentError, setContentError] = useState<string | null>(null);
         <View style={styles.pageHeader}>
           <Text style={styles.pageTitle}>Cartes UP</Text>
         </View>
-        {contentError && (
+        {contentError ? (
           <TouchableOpacity style={styles.errorBanner} onPress={loadEditorialContent}>
             <Text style={styles.errorBannerText}>{contentError}</Text>
             <Text style={styles.errorBannerCta}>Actualiser les cadeaux partenaires</Text>
           </TouchableOpacity>
+        ) : (
+          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
         )}
 
         <View style={styles.giftCardsTabs}>
@@ -1676,10 +1716,12 @@ const [contentError, setContentError] = useState<string | null>(null);
           <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
         </TouchableOpacity>
 
-        {activeTab === 'mes' && (
+        {activeTab === 'mes' ? (
           <View style={styles.section}>{renderMyVouchers()}</View>
+        ) : (
+          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
         )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' && (
+        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? (
           <View>
             <View style={styles.section}>
               <View style={styles.internalTabs}>
@@ -1703,8 +1745,10 @@ const [contentError, setContentError] = useState<string | null>(null);
             </View>
             {renderSelectionUpAccordionsBlock()}
           </View>
+        ) : (
+          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
         )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'predefinie' && (
+        {activeTab === 'cartes-up' && cartesUpSubTab === 'predefinie' ? (
           <View style={styles.section}>
             <View style={styles.internalTabs}>
               {[
@@ -1725,9 +1769,15 @@ const [contentError, setContentError] = useState<string | null>(null);
               })}
             </View>
           </View>
+        ) : (
+          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
         )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' && renderSelectionUpCardStickyBlock()}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' && renderSelectionUpFormBlock()}
+        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? renderSelectionUpCardStickyBlock() : (
+          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
+        )}
+        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? renderSelectionUpFormBlock() : (
+          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
+        )}
         {activeTab === 'cartes-up' && cartesUpSubTab === 'predefinie' && renderCarteUpContent()}
         {activeTab === 'box-up' && renderBoxTab()}
       </AnimatedScrollView>
@@ -2426,6 +2476,8 @@ function PredefinedGiftModal({
   onNavigateToTab,
 }: PredefinedGiftModalProps) {
   const [macaronDropdownOpen, setMacaronDropdownOpen] = useState(false);
+  const [showMacaronPalette, setShowMacaronPalette] = useState(false);
+  const [showBackgroundPalette, setShowBackgroundPalette] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
   const insets = useSafeAreaInsets();
   if (!gift) return null;
@@ -2438,9 +2490,9 @@ function PredefinedGiftModal({
       ? normalizeImageUrl(rawCardImage.trim())
       : null;
   const macaronLabel = selectedMacaron || (selectedMacaronLibre.trim() ? `Pastille libre : ${selectedMacaronLibre.trim()}` : '') || 'Choisir un macaron';
-  const macaronColor = MACARON_COLORS_CARTE.find((c) => c.id === selectedMacaronColorId)?.value ?? colors.primary;
+  const macaronColor = MACARON_PALETTE_GRID.find((c) => c.id === selectedMacaronColorId)?.value ?? colors.primary;
   const predefinedTextColor = TEXT_COLORS_CARTE.find((c) => c.id === selectedTextColorId)?.value ?? '#1a1a2e';
-  const predefinedBgColor = BACKGROUND_COLORS_CARTE.find((c) => c.id === selectedBackgroundColorId)?.value ?? '#ffffff';
+  const predefinedBgColor = BACKGROUND_PALETTE_GRID.find((c) => c.id === selectedBackgroundColorId)?.value ?? '#ffffff';
   const predefinedFont = FONT_OPTIONS_CARTE.find((f) => f.id === selectedFontId);
 
   const escapeHtml = (s: string) =>
@@ -2702,14 +2754,6 @@ function PredefinedGiftModal({
           </View>
           </View>
           <View style={[styles.purchaseCard, { marginTop: spacing.lg }]}>
-          <Text style={styles.sectionLabel}>Message</Text>
-          <TextInput
-            style={[styles.input, styles.inputMultiline]}
-            placeholder="Un mot personnalisé pour accompagner le cadeau"
-            value={message}
-            onChangeText={onMessageChange}
-            multiline
-          />
           <Text style={styles.sectionLabel}>Macaron</Text>
           <View style={styles.macaronDropdownWrap}>
             <TouchableOpacity
@@ -2759,6 +2803,14 @@ function PredefinedGiftModal({
               />
             </View>
           )}
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Message</Text>
+          <TextInput
+            style={[styles.input, styles.inputMultiline]}
+            placeholder="Un mot personnalisé pour accompagner le cadeau"
+            value={message}
+            onChangeText={onMessageChange}
+            multiline
+          />
           <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Style de la carte</Text>
           <Text style={styles.configMetaText}>Police du texte</Text>
           <View style={styles.fontRow}>
@@ -2790,33 +2842,61 @@ function PredefinedGiftModal({
               })}
             </View>
             <Text style={styles.colorBlockLabel}>Macaron</Text>
-            <View style={styles.colorSwatchRow}>
-              {MACARON_COLORS_CARTE.map((c) => {
-                const active = selectedMacaronColorId === c.id;
-                const swatchColor = c.value;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => onMacaronColorChange(c.id)}
-                    style={[styles.colorSwatch, { backgroundColor: swatchColor }, active && styles.colorSwatchActive]}
-                  />
-                );
-              })}
+            <View style={styles.colorPaletteRow}>
+              <View style={[styles.colorSwatchGridItem, { backgroundColor: MACARON_PALETTE_GRID.find((x) => x.id === selectedMacaronColorId)?.value ?? colors.primary }]} />
+              <TouchableOpacity style={styles.colorPaletteToggle} onPress={() => setShowMacaronPalette((v) => !v)}>
+                <Text style={styles.colorPaletteToggleText}>{showMacaronPalette ? 'Masquer les couleurs' : 'Choisir une couleur'}</Text>
+                <Ionicons name={showMacaronPalette ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primaryPurple} />
+              </TouchableOpacity>
             </View>
+            {showMacaronPalette && (
+              <View style={styles.colorSwatchGrid}>
+                {MACARON_PALETTE_GRID.map((c, i) => {
+                  const active = selectedMacaronColorId === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={`macaron-p-${i}-${c.id}`}
+                      onPress={() => onMacaronColorChange(c.id)}
+                      style={[styles.colorSwatchGridItem, { backgroundColor: c.value }, active && styles.colorSwatchGridItemActive]}
+                    >
+                      {active ? (
+                        <View style={styles.colorSwatchCheckWrap}>
+                          <Ionicons name="checkmark" size={14} color="#fff" style={styles.colorSwatchCheck} />
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             <Text style={styles.colorBlockLabel}>Fond</Text>
-            <View style={styles.colorSwatchRow}>
-              {BACKGROUND_COLORS_CARTE.map((c) => {
-                const active = selectedBackgroundColorId === c.id;
-                const swatchColor = c.value;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => onBackgroundColorChange(c.id)}
-                    style={[styles.colorSwatch, { backgroundColor: swatchColor }, active && styles.colorSwatchActive]}
-                  />
-                );
-              })}
+            <View style={styles.colorPaletteRow}>
+              <View style={[styles.colorSwatchGridItem, { backgroundColor: BACKGROUND_PALETTE_GRID.find((x) => x.id === selectedBackgroundColorId)?.value ?? '#ffffff' }]} />
+              <TouchableOpacity style={styles.colorPaletteToggle} onPress={() => setShowBackgroundPalette((v) => !v)}>
+                <Text style={styles.colorPaletteToggleText}>{showBackgroundPalette ? 'Masquer les couleurs' : 'Choisir une couleur'}</Text>
+                <Ionicons name={showBackgroundPalette ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primaryPurple} />
+              </TouchableOpacity>
             </View>
+            {showBackgroundPalette && (
+              <View style={styles.colorSwatchGrid}>
+                {BACKGROUND_PALETTE_GRID.map((c, i) => {
+                  const active = selectedBackgroundColorId === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={`bg-p-${i}-${c.id}`}
+                      onPress={() => onBackgroundColorChange(c.id)}
+                      style={[styles.colorSwatchGridItem, { backgroundColor: c.value }, active && styles.colorSwatchGridItemActive]}
+                    >
+                      {active ? (
+                        <View style={styles.colorSwatchCheckWrap}>
+                          <Ionicons name="checkmark" size={14} color="#333" style={styles.colorSwatchCheck} />
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </View>
           <Text style={styles.sectionLabel}>Nom du bénéficiaire</Text>
           <TextInput
@@ -3268,6 +3348,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
+  stickyIndexPlaceholder: {
+    height: 0,
+    overflow: 'hidden',
+  },
   internalTabs: {
     flexDirection: 'row',
     backgroundColor: colors.white,
@@ -3470,6 +3554,56 @@ const styles = StyleSheet.create({
   },
   colorSwatchActive: {
     borderColor: colors.primaryPurple,
+  },
+  colorSwatchGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: spacing.sm,
+  },
+  colorSwatchGridItem: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorSwatchGridItemActive: {
+    borderColor: '#1a1a2e',
+    borderWidth: 2,
+  },
+  colorSwatchCheckWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  colorSwatchCheck: {
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  colorPaletteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  colorPaletteToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  colorPaletteToggleText: {
+    fontSize: 14,
+    color: colors.primaryPurple,
+    fontWeight: '600',
   },
   colorRow: {
     marginBottom: spacing.sm,

@@ -3,6 +3,7 @@ import {
   getPartnerCategories,
   getPartners,
   invalidateCategoriesCache,
+  invalidatePartnersCache,
   Partner,
   PartnerCategory,
   PartnerFilters,
@@ -48,6 +49,7 @@ export const usePartners = (filters?: PartnerFilters) => {
 
   const refetch = useCallback(() => {
     invalidateCategoriesCache();
+    invalidatePartnersCache();
     fetchData();
   }, [fetchData]);
 

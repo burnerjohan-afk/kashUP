@@ -59,11 +59,24 @@ function normalizePartner(p: Partner): Partner {
   };
 }
 
+/** Cache liste partenaires (sans filtre) pour limiter les appels et éviter 429 */
+let _partnersListCache: { data: Partner[]; expires: number } | null = null;
+const PARTNERS_CACHE_TTL_MS = 60 * 1000; // 1 min
+
+export const invalidatePartnersCache = (): void => {
+  _partnersListCache = null;
+};
+
 /**
  * Récupère tous les partenaires en gérant la pagination automatiquement
  * L'API retourne { partners: Partner[] } dans data, donc on doit extraire partners
  */
 export const getPartners = async (filters?: PartnerFilters): Promise<Partner[]> => {
+  const hasNoFilters = !filters || Object.keys(filters).length === 0;
+  if (hasNoFilters && _partnersListCache && _partnersListCache.expires > Date.now()) {
+    return _partnersListCache.data;
+  }
+
   const allPartners: Partner[] = [];
   let page = 1;
   const pageSize = 200; // Maximum autorisé par l'API
@@ -140,23 +153,30 @@ export const getPartners = async (filters?: PartnerFilters): Promise<Partner[]> 
       console.log(`[getPartners] 📋 Noms:`, allPartners.slice(0, 5).map(p => p.name).join(', '), allPartners.length > 5 ? '...' : '');
     }
 
+    if (hasNoFilters) {
+      _partnersListCache = { data: allPartners, expires: Date.now() + PARTNERS_CACHE_TTL_MS };
+    }
     return allPartners;
   } catch (error: any) {
-    // Gestion d'erreur améliorée
     const errorMessage = error?.message || 'Erreur inconnue';
+    const status = error?.response?.status;
+    const is429 = status === 429;
     const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('exceeded') || error?.code === 'ECONNABORTED';
-    
+
     if (__DEV__) {
-      console.error('[getPartners] ❌ Erreur lors de la récupération:', errorMessage);
-      console.error('[getPartners] 🔍 Type erreur:', isTimeout ? 'TIMEOUT' : 'AUTRE');
-      console.error('[getPartners] 📍 Endpoint tenté:', endpoint);
+      if (is429) {
+        console.warn('[getPartners] ⚠️ Trop de requêtes (429). Réessayez dans un instant.');
+      } else {
+        console.warn('[getPartners] ❌ Erreur lors de la récupération:', errorMessage, isTimeout ? '(TIMEOUT)' : '(AUTRE)');
+      }
     }
 
     if (isTimeout) {
       throw new Error(`L'API ne répond pas dans les temps (timeout). Vérifiez que le serveur est démarré et accessible.`);
     }
-
-    // Relancer l'erreur originale
+    if (is429) {
+      throw new Error('Trop de requêtes. Réessayez dans un instant.');
+    }
     throw error;
   }
 };

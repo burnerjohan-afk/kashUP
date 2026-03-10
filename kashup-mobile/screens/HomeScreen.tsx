@@ -21,9 +21,9 @@ import { useLotteriesForHome } from '@/src/hooks/useLotteries';
 import { useJackpot } from '@/src/hooks/useJackpot';
 import LotteryCountdown from '@/src/components/LotteryCountdown';
 import { colors, CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, radius, spacing } from '../constants/theme';
-import { useNotifications } from '../context/NotificationsContext';
 import { HomeStackParamList } from '../navigation/HomeStack';
 import { MainStackParamList } from '../navigation/MainStack';
+import { useNotifications } from '../context/NotificationsContext';
 import { navigateToOffresDuMoment } from '../navigation/navigationRef';
 
 // Mapping des partenaires vers images de fond et logos
@@ -104,9 +104,6 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
-  const { notifications } = useNotifications();
-  const unreadCount = notifications.filter((notif) => !notif.read).length;
-  const hasActiveNotifications = unreadCount > 0;
 
   const {
     data: profile,
@@ -122,6 +119,9 @@ export default function HomeScreen() {
     error: walletError,
     refetch: refetchWallet,
   } = useWallet();
+
+  const { notifications } = useNotifications();
+  const unreadCount = notifications.filter((notif) => !notif.read).length;
 
   const {
     data: partnersData,
@@ -330,18 +330,20 @@ export default function HomeScreen() {
             onPress={() => setSearchModalVisible(true)}>
             <Ionicons name="search-outline" size={24} color={colors.textMain} />
           </TouchableOpacity>
-          {/* Notifications - TOUJOURS visible, badge uniquement si actives */}
-          <TouchableOpacity
-            style={styles.headerIcon}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('Notifications')}>
-            <Ionicons name="notifications-outline" size={24} color={colors.textMain} />
-            {hasActiveNotifications && (
-              <View style={styles.headerBadge}>
+          {/* Notifications - badge en haut à droite de l'icône (comme sur les autres pages) */}
+          <View style={styles.headerIconWrap}>
+            <TouchableOpacity
+              style={styles.headerIcon}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('Notifications')}>
+              <Ionicons name="notifications-outline" size={24} color={colors.textMain} />
+            </TouchableOpacity>
+            {unreadCount > 0 && (
+              <View style={styles.headerBadgeTopRight}>
                 <Text style={styles.headerBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
               </View>
             )}
-          </TouchableOpacity>
+          </View>
           {/* Profil utilisateur - TOUJOURS visible */}
           <TouchableOpacity style={styles.headerIcon} activeOpacity={0.7} onPress={handleProfilePress}>
             <Ionicons name="person-circle-outline" size={24} color={colors.textMain} />
@@ -1151,6 +1153,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  headerIconWrap: {
+    position: 'relative',
+    overflow: 'visible',
+  },
   headerIcon: {
     width: 38,
     height: 38,
@@ -1162,16 +1168,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  headerBadge: {
+  headerBadgeTopRight: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: -4,
+    right: -4,
+    zIndex: 1,
     backgroundColor: colors.accentRed,
     borderRadius: 10,
     paddingHorizontal: 5,
     paddingVertical: 2,
     minWidth: 20,
+    height: 20,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   headerBadgeText: {
     color: colors.white,

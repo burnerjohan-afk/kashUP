@@ -92,19 +92,21 @@ export function TabScreenHeader({
           <Ionicons name="chevron-back" size={24} color={iconColor} />
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity
-          style={[styles.headerIcon, isGreen && styles.headerIconOnGreen]}
-          activeOpacity={0.7}
-          onPress={onNotificationPress}>
-          <Ionicons name="notifications-outline" size={24} color={iconColor} />
+        <View style={styles.headerIconWrap}>
+          <TouchableOpacity
+            style={[styles.headerIcon, isGreen && styles.headerIconOnGreen]}
+            activeOpacity={0.7}
+            onPress={onNotificationPress}>
+            <Ionicons name="notifications-outline" size={24} color={iconColor} />
+          </TouchableOpacity>
           {hasActiveNotifications && (
-            <View style={styles.headerBadge}>
+            <View style={styles.headerBadgeTopRight}>
               <Text style={styles.headerBadgeText}>
                 {unreadCount > 9 ? '9+' : unreadCount}
               </Text>
             </View>
           )}
-        </TouchableOpacity>
+        </View>
       )}
       {showPills ? (
         <View style={styles.pillsRow}>
@@ -268,6 +270,10 @@ const styles = StyleSheet.create({
     minHeight: TAB_HEADER_HEIGHT,
     paddingTop: 2,
   },
+  headerIconWrap: {
+    position: 'relative',
+    overflow: 'visible',
+  },
   headerIcon: {
     width: 36,
     height: 36,
@@ -277,18 +283,20 @@ const styles = StyleSheet.create({
     borderColor: colors.greyBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  headerBadge: {
+  headerBadgeTopRight: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: -4,
+    right: -4,
+    zIndex: 1,
     backgroundColor: colors.accentRed,
     borderRadius: 10,
     paddingHorizontal: 5,
     paddingVertical: 2,
     minWidth: 20,
+    height: 20,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   headerBadgeText: {
     color: colors.white,
