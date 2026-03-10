@@ -6,13 +6,15 @@ import { getFileUrl } from '../config/upload';
 const isVercel = Boolean(process.env.VERCEL);
 const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
+/** Utilise Vercel Blob dès que le token est défini (recommandé en prod pour loteries et rewards). */
 function shouldUseBlob(): boolean {
-  return isVercel && hasBlobToken;
+  return hasBlobToken;
 }
 
 /**
- * Upload un fichier vers Vercel Blob (sur Vercel uniquement).
- * Retourne l'URL publique du fichier.
+ * Upload un fichier vers Vercel Blob.
+ * Utilisé pour les images de loteries et rewards en production (persistant sur Vercel).
+ * Retourne l'URL du Blob (privée, l'app passe par le proxy API pour l'affichage).
  */
 async function uploadToBlob(
   file: Express.Multer.File,
@@ -28,7 +30,7 @@ async function uploadToBlob(
 
 /**
  * Traite un fichier uploadé et retourne son URL.
- * Sur Vercel avec BLOB_READ_WRITE_TOKEN : upload vers Vercel Blob.
+ * Si BLOB_READ_WRITE_TOKEN est défini : upload vers Vercel Blob (photos loteries, rewards, etc.).
  * Sinon : URL locale /uploads/...
  */
 export async function processUploadedFile(

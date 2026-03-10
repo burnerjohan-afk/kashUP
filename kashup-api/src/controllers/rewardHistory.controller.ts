@@ -4,17 +4,21 @@ import { getActiveLotteries, getLotteryById, enterLottery, getActiveLotteriesFor
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
+import { buildAbsoluteUrl } from '../utils/network';
 
-/** Corrige /upload/ en /uploads/ (typo). Même schéma que offres et Box UP : on renvoie un chemin relatif, l'app construit l'URL avec apiOrigin + path. */
-function normalizeLotteryImagePath<T extends { imageUrl?: string | null }>(lottery: T): T {
+/** Corrige /upload/ en /uploads/ et renvoie une URL absolue pour que l'app (APK/prod) charge les images correctement. */
+function normalizeLotteryImagePath<T extends { imageUrl?: string | null }>(req: Request, lottery: T): T {
   const raw = lottery.imageUrl;
   if (!raw || typeof raw !== 'string' || (raw as string).trim() === '') {
     return lottery;
   }
-  const url = (raw as string).trim();
-  const fixed = url.replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
-  if (fixed === url) return lottery;
-  return { ...lottery, imageUrl: fixed };
+  let url = (raw as string).trim();
+  url = url.replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return { ...lottery, imageUrl: url };
+  }
+  const absolute = buildAbsoluteUrl(req, url.startsWith('/') ? url : `/${url}`);
+  return { ...lottery, imageUrl: absolute };
 }
 
 type ChallengeRaw = Awaited<ReturnType<typeof listChallenges>>[number];
@@ -30,21 +34,21 @@ export const getRewardHistory = asyncHandler(async (req: Request, res: Response)
 export const getLotteries = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.sub;
   const lotteries = await getActiveLotteriesForRewards(userId);
-  const data = lotteries.map((l) => normalizeLotteryImagePath(l));
+  const data = lotteries.map((l) => normalizeLotteryImagePath(req, l));
   sendSuccess(res, data);
 });
 
 export const getLotteriesForHome = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.sub;
   const lotteries = await getActiveLotteriesForHome(userId);
-  const data = lotteries.map((l) => normalizeLotteryImagePath(l));
+  const data = lotteries.map((l) => normalizeLotteryImagePath(req, l));
   sendSuccess(res, data);
 });
 
 export const getLotteryByIdHandler = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.sub;
   const lottery = await getLotteryById(req.params.id, userId);
-  sendSuccess(res, normalizeLotteryImagePath(lottery));
+  sendSuccess(res, normalizeLotteryImagePath(req, lottery));
 });
 
 export const joinLotteryHandler = asyncHandler(async (req: Request, res: Response) => {

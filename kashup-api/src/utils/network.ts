@@ -46,9 +46,9 @@ export function buildAbsoluteUrl(req: Request, path: string): string {
   if (!path || typeof path !== 'string') return '';
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const protocol = req.protocol || 'http';
-  const host = req.get('host');
-  const hostname = req.hostname || host?.split(':')[0] || 'localhost';
-  const port = host?.includes(':') ? host.split(':')[1] : (process.env.PORT || '4000');
+  const host = req.get('host') ?? '';
+  const hostname = req.hostname || host.split(':')[0] || 'localhost';
+  const port = host.includes(':') ? host.split(':')[1] : (process.env.PORT || '4000');
 
   // Si c'est localhost/127.0.0.1, utiliser l'IP LAN pour que le téléphone puisse charger les images
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
@@ -58,6 +58,10 @@ export function buildAbsoluteUrl(req: Request, path: string): string {
     }
   }
 
+  // Si Host contient déjà le port (ex: localhost:4000), l'utiliser ; sinon pas de port (prod type kashupv0.vercel.app)
+  if (host) {
+    return `${protocol}://${host}${normalizedPath}`;
+  }
   return `${protocol}://${hostname}:${port}${normalizedPath}`;
 }
 
