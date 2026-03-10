@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import { createRewardHandler, deleteRewardHandler, getAllRewards, getBadges, getBoosts, getRewardsByType, purchaseBoostHandler, updateRewardHandler } from '../controllers/reward.controller';
 import { getChallengeCategories, getChallenges, getLotteries, getLotteriesForHome, getLotteryByIdHandler, getRewardHistory, joinLotteryHandler } from '../controllers/rewardHistory.controller';
+import { getRewardFileByPath } from '../controllers/blob.controller';
 import { authMiddleware, optionalAuthMiddleware, requireRoles } from '../middlewares/auth';
 import { USER_ROLE } from '../types/domain';
 import { uploadSingleOptional } from '../config/upload';
 
 const router = Router();
+
+// Servir image reward/loterie depuis Blob par pathname (pour APK quand BDD a chemin relatif)
+router.get('/file', getRewardFileByPath);
 
 // Routes publiques/utilisateurs
 router.get('/boosts', getBoosts);

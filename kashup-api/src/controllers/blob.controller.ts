@@ -1,6 +1,7 @@
 /**
  * Proxy pour servir les images/fichiers depuis Vercel Blob (store privé).
  * GET /api/v1/blob?url=... — stream le contenu du blob vers le client.
+ * GET /api/v1/rewards/file?path=uploads/rewards/xxx — stream une image reward/loterie par pathname (pour APK quand la BDD a un chemin relatif).
  * Supporte les requêtes Range (bytes) pour la lecture vidéo (expo-av / AVPlayer).
  */
 
@@ -107,5 +108,44 @@ export async function getBlobProxy(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('[blob] Erreur proxy:', err);
     res.status(500).json({ error: 'Erreur lors du chargement du fichier' });
+  }
+}
+
+/** Préfixe autorisé pour servir les images rewards (loteries, etc.) depuis Blob par pathname */
+const REWARDS_BLOB_PREFIX = 'uploads/rewards/';
+
+/**
+ * Sert une image reward (ex. loterie) depuis Vercel Blob en utilisant le pathname.
+ * Utilisé quand la BDD contient un chemin relatif (uploads/rewards/xxx) au lieu d'une URL Blob.
+ * GET /api/v1/rewards/file?path=uploads/rewards/xxx.jpg
+ */
+export async function getRewardFileByPath(req: Request, res: Response): Promise<void> {
+  const rawPath = req.query.path;
+  if (typeof rawPath !== 'string' || !rawPath.trim()) {
+    res.status(400).json({ error: 'Paramètre path requis (ex: path=uploads/rewards/filename.jpg)' });
+    return;
+  }
+  const pathname = rawPath.trim().replace(/^\/+/, '');
+  if (!pathname.startsWith(REWARDS_BLOB_PREFIX) || pathname.includes('..')) {
+    res.status(400).json({ error: 'Chemin non autorisé (uploads/rewards/ uniquement)' });
+    return;
+  }
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    res.status(503).json({ error: 'Blob non configuré' });
+    return;
+  }
+  try {
+    const result = await get(pathname, { access: 'private' as const });
+    if (!result || result.statusCode !== 200) {
+      res.status(404).json({ error: 'Image introuvable' });
+      return;
+    }
+    res.setHeader('Content-Type', result.blob.contentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const nodeStream = Readable.fromWeb(result.stream as Parameters<typeof Readable.fromWeb>[0]);
+    nodeStream.pipe(res);
+  } catch (err) {
+    console.error('[blob] Erreur reward file by path:', err);
+    res.status(500).json({ error: 'Erreur lors du chargement de l\'image' });
   }
 }

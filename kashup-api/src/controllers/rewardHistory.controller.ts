@@ -6,7 +6,9 @@ import { AppError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
 import { buildAbsoluteUrl } from '../utils/network';
 
-/** Corrige /upload/ en /uploads/ et renvoie une URL absolue pour que l'app (APK/prod) charge les images correctement. */
+const hasBlobToken = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
+/** Corrige /upload/ en /uploads/ et renvoie une URL chargeable par l'app (APK/prod). Si BDD a un chemin relatif et Blob est configuré, pointe vers GET /api/v1/rewards/file?path=... qui sert l'image depuis Blob. */
 function normalizeLotteryImagePath<T extends { imageUrl?: string | null }>(req: Request, lottery: T): T {
   const raw = lottery.imageUrl;
   if (!raw || typeof raw !== 'string' || (raw as string).trim() === '') {
@@ -16,6 +18,10 @@ function normalizeLotteryImagePath<T extends { imageUrl?: string | null }>(req: 
   url = url.replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return { ...lottery, imageUrl: url };
+  }
+  const pathname = url.replace(/^\/+/, '');
+  if (hasBlobToken() && pathname.startsWith('uploads/rewards/')) {
+    return { ...lottery, imageUrl: buildAbsoluteUrl(req, `/api/v1/rewards/file?path=${encodeURIComponent(pathname)}`) };
   }
   const absolute = buildAbsoluteUrl(req, url.startsWith('/') ? url : `/${url}`);
   return { ...lottery, imageUrl: absolute };
