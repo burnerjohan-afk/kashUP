@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { hasRefreshToken } from '../services/api';
+import type { ChallengeCategory, RewardChallenge } from '../../types/rewards';
 import {
   AvailableBoost,
   BadgeCatalogEntry,
   getAvailableBoosts,
   getBadgeCatalog,
+  getChallengeCategories,
+  getChallenges,
   getRewardsSummary,
   getUserBadges,
   purchaseBoost,
@@ -17,13 +20,17 @@ type RewardsData = {
   userBadges: UserBadge[];
   availableBoosts: AvailableBoost[];
   badgeCatalog: BadgeCatalogEntry[];
+  challenges: RewardChallenge[];
+  challengeCategories: ChallengeCategory[];
 };
 
 const defaultData: RewardsData = {
   summary: null,
   userBadges: [],
   availableBoosts: [],
-  badgeCatalog: []
+  badgeCatalog: [],
+  challenges: [],
+  challengeCategories: [],
 };
 
 const formatError = (error: unknown) => {
@@ -43,25 +50,22 @@ export const useRewards = () => {
     setError(null);
     try {
       const isAuth = await hasRefreshToken();
-      const [summary, userBadges, availableBoosts, badgeCatalog] = isAuth
-        ? await Promise.all([
-            getRewardsSummary().catch(() => null),
-            getUserBadges().catch(() => []),
-            getAvailableBoosts().catch(() => []),
-            getBadgeCatalog().catch(() => [])
-          ])
-        : [
-            null as RewardSummary | null,
-            [] as UserBadge[],
-            await getAvailableBoosts().catch(() => []),
-            await getBadgeCatalog().catch(() => [])
-          ];
+      const [summary, userBadges, availableBoosts, badgeCatalog, challenges, challengeCategories] = await Promise.all([
+        isAuth ? getRewardsSummary().catch(() => null) : Promise.resolve(null as RewardSummary | null),
+        isAuth ? getUserBadges().catch(() => []) : Promise.resolve([] as UserBadge[]),
+        getAvailableBoosts().catch(() => []),
+        getBadgeCatalog().catch(() => []),
+        getChallenges().catch(() => []),
+        isAuth ? getChallengeCategories().catch(() => []) : Promise.resolve([] as ChallengeCategory[]),
+      ]);
 
       setData({
         summary,
         userBadges,
         availableBoosts,
-        badgeCatalog
+        badgeCatalog,
+        challenges: challenges ?? [],
+        challengeCategories: challengeCategories ?? [],
       });
     } catch (err) {
       setError(formatError(err));

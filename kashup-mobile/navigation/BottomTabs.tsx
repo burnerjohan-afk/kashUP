@@ -66,7 +66,12 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 canPreventDefault: true,
               });
               if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name, route.params);
+                // Toujours rouvrir Partenaires sur la liste, pas sur "Toutes les offres"
+                if (route.name === 'Partenaires') {
+                  navigation.navigate('Partenaires', { screen: 'PartnersList' });
+                } else {
+                  navigation.navigate(route.name, route.params);
+                }
               }
             };
 

@@ -12,8 +12,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../../constants/theme';
 
-/** Même hauteur que le bandeau de la page d'accueil (HEADER_CONTENT_HEIGHT) */
-export const TAB_HEADER_HEIGHT = 44;
+/** Hauteur du bandeau (contenu + 30 px d’agrandissement depuis la base 44) */
+export const TAB_HEADER_HEIGHT = 64;
+/** Décalage vertical du bandeau (le faire descendre de 20 px sur les pages autres qu'accueil) */
+export const TAB_HEADER_TOP_OFFSET = 20;
 
 const formatCashback = (v: number) =>
   v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,8 +24,8 @@ const formatPoints = (v: number) => `${v.toLocaleString('fr-FR')} pts`;
 export type TabScreenHeaderProps = {
   /** Titre au centre (optionnel) */
   title?: string;
-  /** Valeur animée du scroll Y pour l'effet de transparence */
-  scrollY: Animated.Value;
+  /** Valeur animée du scroll Y pour l'effet de transparence (optionnel ; si absent, fond opaque) */
+  scrollY?: Animated.Value;
   /** Clic sur l'icône notifications */
   onNotificationPress: () => void;
   /** Clic sur l'icône profil */
@@ -58,23 +60,24 @@ export function TabScreenHeader({
   onBackPress,
 }: TabScreenHeaderProps) {
   const insets = useSafeAreaInsets();
-  const paddingTop = Math.max(0, insets.top - 36);
+  const paddingTop = Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET;
   const showPills = showPillsRow || cashback != null || points != null;
   const cashbackValue = cashback != null ? cashback : 0;
   const pointsValue = points != null ? points : 0;
   const isGreen = variant === 'green';
 
-  const backgroundColor = solidBackground
-    ? (isGreen ? 'rgba(3,77,53,0.98)' : colors.white)
-    : scrollY.interpolate({
-    inputRange: [0, 60, 120],
-    outputRange: [
-      isGreen ? 'rgba(3,77,53,0.98)' : 'rgba(255,255,255,0.92)',
-      isGreen ? 'rgba(3,77,53,0.96)' : 'rgba(255,255,255,0.90)',
-      isGreen ? 'rgba(3,77,53,0.94)' : 'rgba(255,255,255,0.88)',
-    ],
-    extrapolate: 'clamp',
-  });
+  const backgroundColor =
+    solidBackground || !scrollY
+      ? (isGreen ? 'rgba(3,77,53,0.98)' : colors.white)
+      : scrollY.interpolate({
+          inputRange: [0, 60, 120],
+          outputRange: [
+            isGreen ? 'rgba(3,77,53,0.98)' : 'rgba(255,255,255,0.92)',
+            isGreen ? 'rgba(3,77,53,0.96)' : 'rgba(255,255,255,0.90)',
+            isGreen ? 'rgba(3,77,53,0.94)' : 'rgba(255,255,255,0.88)',
+          ],
+          extrapolate: 'clamp',
+        });
 
   const hasActiveNotifications = unreadCount > 0;
   const iconColor = isGreen ? colors.white : colors.textMain;
@@ -263,6 +266,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: TAB_HEADER_HEIGHT,
+    paddingTop: 2,
   },
   headerIcon: {
     width: 36,

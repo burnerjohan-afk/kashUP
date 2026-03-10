@@ -33,6 +33,8 @@ model User {
   receivedPredefinedGifts PredefinedGiftSend[] @relation("PredefinedGiftSendBeneficiary")
   sentPredefinedGifts     PredefinedGiftSend[] @relation("PredefinedGiftSendSender")
   lotteryEntries    LotteryEntry[]
+  lotteryTickets    LotteryTicket[]
+  lotteryWins       LotteryWinner[]
   notifications     Notification[]
   pointsHistory     Points[]
   powensConnections PowensConnection[]
@@ -52,6 +54,9 @@ model User {
   coffreFortMovements   CoffreFortMovement[]
   coffreFortWithdrawals CoffreFortWithdrawal[]
   coffreFortPoints      CoffreFortPointsEntry[]
+  jackpotEntries        JackpotEntry[]
+  jackpotContributions  JackpotContribution[]
+  jackpotWins           JackpotWinner[]
 }
 
 model PartnerCategory {
@@ -112,6 +117,8 @@ model Partner {
   offers            PartnerOffer[]
   transactions      Transaction[]
   users             User[]                 // Comptes espace partenaire (role=partner)
+  challenges        Challenge[]
+  lotteries         Lottery[]
 
   @@index([categoryId])
 }
@@ -562,49 +569,231 @@ model RewardHistory {
 }
 
 model Lottery {
-  id          String         @id @default(cuid())
-  title       String
-  description String?
-  imageUrl    String?
-  startAt     DateTime
-  endAt       DateTime
-  ticketCost  Int
-  status      String         @default("upcoming")
-  active      Boolean        @default(true)
-  updatedAt   DateTime       @updatedAt
-  deletedAt   DateTime?
-  entries     LotteryEntry[]
+  id                    String          @id @default(cuid())
+  title                 String
+  description           String?
+  shortDescription      String?
+  imageUrl              String?
+  prizeType             String?         // carte_cadeau | bon_achat | cashback | points_bonus | box | avantage_partenaire | badge | boost
+  prizeTitle            String?
+  prizeDescription      String?
+  prizeValue            Float?
+  prizeCurrency         String?         @default("EUR")
+  rewardId              String?
+  partnerId             String?
+  pointsPerTicket       Int             @default(100)
+  ticketCost            Int?            // deprecated, use pointsPerTicket
+  isTicketStockLimited  Boolean         @default(false)
+  totalTicketsAvailable Int?            // null = illimité
+  totalTicketsSold      Int             @default(0)
+  maxTicketsPerUser     Int?            // null = illimité
+  startDate             DateTime?
+  endDate               DateTime?
+  startAt               DateTime        // legacy
+  endAt                 DateTime
+  drawDate              DateTime?
+  status                String          @default("upcoming") // upcoming | active | closed
+  winnerUserId          String?
+  showOnHome            Boolean         @default(false)
+  showOnRewards         Boolean         @default(true)
+  active                Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
+  entries               LotteryEntry[]
+  tickets               LotteryTicket[]
+  winners               LotteryWinner[]
+  partner               Partner?        @relation(fields: [partnerId], references: [id])
 
   @@index([updatedAt])
+  @@index([status])
+  @@index([showOnHome])
+  @@index([showOnRewards])
 }
 
 model LotteryEntry {
-  id        String   @id @default(cuid())
-  lotteryId String
-  userId    String
-  tickets   Int      @default(1)
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  lottery   Lottery  @relation(fields: [lotteryId], references: [id])
+  id          String   @id @default(cuid())
+  lotteryId   String
+  userId      String
+  tickets     Int      @default(1)   // legacy alias for ticketCount
+  ticketCount Int      @default(1)
+  pointsSpent Int      @default(0)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+  lottery     Lottery  @relation(fields: [lotteryId], references: [id])
+  ticketRows  LotteryTicket[]
 
   @@unique([lotteryId, userId])
+  @@index([lotteryId])
+  @@index([userId])
+}
+
+model LotteryTicket {
+  id         String   @id @default(cuid())
+  lotteryId  String
+  userId     String
+  entryId    String
+  ticketNumber Int
+  status     String   @default("valid") // valid | used | void
+  createdAt  DateTime @default(now())
+  lottery    Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id])
+  entry      LotteryEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([lotteryId, ticketNumber])
+  @@index([lotteryId])
+  @@index([userId])
+  @@index([entryId])
+}
+
+model LotteryWinner {
+  id           String    @id @default(cuid())
+  lotteryId    String
+  userId       String
+  entryId      String
+  ticketId     String?
+  drawDate     DateTime  @default(now())
+  rewardStatus String    @default("pending") // pending | delivered
+  deliveredAt  DateTime?
+  createdAt    DateTime  @default(now())
+  lottery      Lottery   @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([lotteryId])
+  @@index([userId])
+}
+
+// ========== Jackpot communautaire ==========
+// Config singleton (règles configurables en back-office)
+model CommunityJackpotConfig {
+  id                                 String   @id @default(cuid())
+  cashbackContributionPercent        Float    @default(0)   // % du cashback partenaires alimentant le jackpot
+  lotteryPointsContribution          Int      @default(0)   // points jackpot par ticket loterie
+  challengePointsContribution        Int      @default(0)   // points jackpot par challenge complété
+  globalPartnerPurchaseAmountThreshold Float  @default(0)  // montant total achats pour déclencher tirage
+  globalActionsThreshold            Int      @default(0)   // nombre total d'actions pour déclencher tirage
+  minActionsPerUser                  Int      @default(0)   // min actions pour être éligible au gain
+  minPartnerPurchasesPerUser         Int?                   // min achats partenaires pour être éligible (optionnel)
+  freeParticipationTickets           Int      @default(1)   // tickets donnés par participation gratuite
+  partnerPurchaseTickets             Int      @default(0)   // tickets par achat partenaire
+  lotteryTicketTickets               Int      @default(0)   // tickets par participation loterie
+  challengeCompletionTickets         Int      @default(0)   // tickets par challenge complété
+  maxDrawDate                        DateTime?             // date max tirage si seuils non atteints (appliquée au jackpot actif)
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
+}
+
+model CommunityJackpot {
+  id                         String    @id @default(cuid())
+  title                      String    @default("Jackpot KashUP")
+  description                String?
+  currentAmount              Float     @default(0)
+  currency                   String    @default("EUR")
+  startDate                  DateTime  @default(now())
+  maxDrawDate                DateTime?
+  status                     String    @default("active")   // active | drawn | closed
+  totalParticipants          Int       @default(0)
+  totalActions               Int       @default(0)
+  totalPartnerPurchasesAmount Float    @default(0)
+  lastWinnerUserId           String?
+  lastWinningAmount          Float?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  contributions              JackpotContribution[]
+  entries                    JackpotEntry[]
+  winners                    JackpotWinner[]
+
+  @@index([status])
+  @@index([maxDrawDate])
+}
+
+model JackpotContribution {
+  id                  String    @id @default(cuid())
+  jackpotId           String
+  userId              String?   // null pour sponsor (contribution directe)
+  sourceType          String    // partner_cashback | lottery_ticket | challenge_completion | free_participation | sponsor
+  sourceReferenceId   String?   // transactionId, lotteryEntryId, challengeProgressId, partnerId (sponsor)
+  contributionAmount  Float     @default(0)  // montant en € ajouté au jackpot
+  contributionPoints  Int       @default(0)  // points jackpot (pour suivi)
+  createdAt           DateTime  @default(now())
+  jackpot             CommunityJackpot @relation(fields: [jackpotId], references: [id], onDelete: Cascade)
+  user                User?    @relation(fields: [userId], references: [id])
+
+  @@index([jackpotId])
+  @@index([userId])
+  @@index([sourceType])
+}
+
+model JackpotEntry {
+  id                     String    @id @default(cuid())
+  jackpotId              String
+  userId                 String
+  tickets                Int        @default(0)
+  actionsCount           Int        @default(0)
+  partnerPurchasesCount  Int        @default(0)
+  isEligible             Boolean    @default(false)
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  jackpot                CommunityJackpot @relation(fields: [jackpotId], references: [id], onDelete: Cascade)
+  user                   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jackpotId, userId])
+  @@index([jackpotId])
+  @@index([userId])
+}
+
+model JackpotWinner {
+  id            String    @id @default(cuid())
+  jackpotId     String
+  userId        String
+  winningAmount Float
+  drawDate      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  jackpot       CommunityJackpot @relation(fields: [jackpotId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([jackpotId])
+  @@index([userId])
+}
+
+// Récompense associée à un challenge (cashback, points, gift_card, voucher, badge, boost)
+model ChallengeReward {
+  id              String    @id @default(cuid())
+  rewardType      String    // cashback | points | gift_card | voucher | badge | boost
+  rewardValue     Float     @default(0)   // montant ou quantité
+  rewardCurrency String?   @default("EUR")
+  expirationDays Int?      // validité en jours après attribution
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  challenges      Challenge[]
 }
 
 model Challenge {
   id           String              @id @default(cuid())
   title        String
   description  String?
-  goalType     String
-  goalValue    Int
-  rewardPoints Int                 @default(0)
+  category     String?             // consentements | parrainages | cagnotte | achats | connexion | ma_fid — pour menu Badges & points façon Naomi
+  type         String              @default("challenge_purchase") // challenge_purchase | challenge_spend | challenge_discovery | challenge_loyalty | challenge_invite | challenge_geo | challenge_event
+  goalType     String              // alias sémantique (ex: "partners" | "amount" | "visits")
+  goalValue    Int                 // ex: 3 partenaires, 50€, 5 achats
+  rewardPoints Int                 @default(0) // rétrocompat
+  rewardId     String?
+  difficulty   String?             @default("medium") // easy | medium | hard
   startAt      DateTime
   endAt        DateTime
-  status       String              @default("upcoming")
+  status       String              @default("active") // upcoming | active | ended
+  partnerId    String?
+  createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   deletedAt    DateTime?
   progressions ChallengeProgress[]
+  reward       ChallengeReward?    @relation(fields: [rewardId], references: [id])
+  partner      Partner?            @relation(fields: [partnerId], references: [id])
 
   @@index([updatedAt])
+  @@index([status])
+  @@index([type])
+  @@index([category])
 }
 
 model ChallengeProgress {
@@ -613,10 +802,12 @@ model ChallengeProgress {
   userId      String
   progress    Int       @default(0)
   completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
   user        User      @relation(fields: [userId], references: [id])
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
 
   @@unique([challengeId, userId])
+  @@index([userId])
 }
 
 model UserBankConnection {

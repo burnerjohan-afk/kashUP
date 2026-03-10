@@ -8,9 +8,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
   Image,
   ImageBackground,
   ImageSourcePropType,
+  LayoutChangeEvent,
   Modal,
   Pressable,
   RefreshControl,
@@ -32,7 +34,7 @@ import type { Offer } from '@/src/services/offers';
 import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import type { PartnerViewModel } from '@/src/utils/partnerAdapter';
 import { adaptPartnerFromApi } from '@/src/utils/partnerAdapter';
-import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
 import { useNotifications } from '../context/NotificationsContext';
 import { getCategoryAccent } from '../constants/categoryAccents';
 import { getCategoryIcon } from '../constants/categoryIcons';
@@ -118,6 +120,11 @@ const ALL_CATEGORIES_ID = 'all';
 const RADIUS_OPTIONS = [1, 5, 10, 25];
 const PARTNERS_OFFER_CARD_WIDTH = 280;
 const REFERENCE_POINT = { latitude: 14.616, longitude: -61.058 };
+/** Hauteur bandeau bas (tab bar) pour positionner le premier partenaire au-dessus */
+const BOTTOM_TAB_AREA = 90;
+/** Hauteur approximative titre de section + première carte partenaire (pour scroll ciblé) */
+const SECTION_HEADER_APPROX = 32;
+const PARTNER_CARD_APPROX = 110;
 
 const toRad = (value: number) => (value * Math.PI) / 180;
 
@@ -163,7 +170,35 @@ export default function PartnersScreen() {
   const [topInset, setTopInset] = useState(insets.top);
   const scrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
+  /** Pour ne scroller qu'une fois par sélection de catégorie (premier partenaire au-dessus du bandeau) */
+  const scrollToFirstPartnerRef = useRef(false);
   const { notifications } = useNotifications();
+
+  useEffect(() => {
+    if (selectedCategoryId && selectedCategoryId !== ALL_CATEGORIES_ID) {
+      scrollToFirstPartnerRef.current = true;
+    }
+  }, [selectedCategoryId]);
+
+  const handleFirstSectionLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      if (!scrollToFirstPartnerRef.current || selectedCategoryId === ALL_CATEGORIES_ID) return;
+      scrollToFirstPartnerRef.current = false;
+      const { y: firstSectionY } = e.nativeEvent.layout;
+      const windowHeight = Dimensions.get('window').height;
+      const visibleTopForFirstCard =
+        windowHeight - insets.bottom - BOTTOM_TAB_AREA - PARTNER_CARD_APPROX;
+      const targetScrollY = Math.max(
+        0,
+        firstSectionY + SECTION_HEADER_APPROX - visibleTopForFirstCard
+      );
+      setTimeout(() => {
+        (scrollRef.current as any)?.scrollTo?.({ y: targetScrollY, animated: true });
+      }, 100);
+    },
+    [insets.bottom, selectedCategoryId]
+  );
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleNotificationPress = useCallback(() => {
@@ -415,7 +450,7 @@ export default function PartnersScreen() {
         refreshControl={
           <RefreshControl refreshing={partnersLoading} onRefresh={refetch} />
         }>
-        <View key={`spacer-${layoutKey}`} style={[styles.headerSpacer, { height: Math.max(0, topInset - 36) + TAB_HEADER_HEIGHT + 13 }]} />
+        <View key={`spacer-${layoutKey}`} style={[styles.headerSpacer, { height: Math.max(0, topInset - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 13 }]} />
         <View style={styles.headerOuter}>
           <View style={styles.header}>
             <Text style={styles.title}>Partenaires</Text>
@@ -629,8 +664,16 @@ export default function PartnersScreen() {
         ) : sections.length === 0 ? (
           <Text style={styles.emptyState}>Aucun partenaire trouvé pour votre recherche.</Text>
         ) : (
-          sections.map((section) => (
-            <View key={section.title} style={styles.sectionBlock}>
+          sections.map((section, sectionIndex) => (
+            <View
+              key={section.title}
+              style={styles.sectionBlock}
+              onLayout={
+                sectionIndex === 0 &&
+                selectedCategoryId !== ALL_CATEGORIES_ID
+                  ? handleFirstSectionLayout
+                  : undefined
+              }>
               <Text style={styles.sectionHeader}>{section.title}</Text>
               {section.data.map((item) => {
                 const accentColor = categoryAccentMap.get(item.categoryId) ?? getCategoryAccent(item.categoryId);
@@ -686,7 +729,8 @@ function PartnerCard({
 }: PartnerCardProps) {
   const [logoError, setLogoError] = React.useState(false);
   const accent = accentColor ?? colors.primary;
-  const showLogo = partner.logoUrl && partner.logoUrl.trim() !== '' && !logoError;
+  const logoUri = partner.logoUrl && partner.logoUrl.trim() !== '' ? normalizeImageUrl(partner.logoUrl) : null;
+  const showLogo = !!logoUri && !logoError;
 
   const badges = useMemo(() => {
     const list: Array<{ key: string; label: string; style: 'pepite' | 'boosted' | 'popular' }> = [];
@@ -707,7 +751,7 @@ function PartnerCard({
       <View style={styles.partnerLogo}>
         {showLogo ? (
           <Image
-            source={{ uri: partner.logoUrl }}
+            source={{ uri: logoUri! }}
             style={styles.partnerLogoImage}
             resizeMode="cover"
             onError={() => setLogoError(true)}

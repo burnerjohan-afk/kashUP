@@ -25,6 +25,7 @@ import { FacebookLogo, InstagramLogo } from '@/src/components/SocialLogos';
 
 import { getPartnerById } from '@/src/services/partnerService';
 import { adaptPartnerFromApi } from '@/src/utils/partnerAdapter';
+import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import type { PartnerViewModel } from '@/src/utils/partnerAdapter';
 import { useUserTerritory } from '@/src/hooks/useUserTerritory';
 import { TERRITORY_OPTIONS, type TerritoryKey } from '@/src/utils/territoryFromLocation';
@@ -90,12 +91,13 @@ type PartnerDetailNav = NavigationProp<MainStackParamList>;
 
 function HeroLogo({ partner }: { partner: PartnerViewModel }) {
   const [logoError, setLogoError] = useState(false);
-  const showLogo = partner.logoUrl && partner.logoUrl.trim() !== '' && !logoError;
+  const logoUri = partner.logoUrl && partner.logoUrl.trim() !== '' ? normalizeImageUrl(partner.logoUrl) : null;
+  const showLogo = !!logoUri && !logoError;
   return (
     <View style={styles.heroLogoContainer}>
       {showLogo ? (
         <Image
-          source={{ uri: partner.logoUrl }}
+          source={{ uri: logoUri }}
           style={styles.heroLogoImage}
           resizeMode="cover"
           onError={() => setLogoError(true)}
@@ -741,7 +743,8 @@ type VoucherPanelProps = {
 
 function VoucherPanel({ accentColor, partnerName, logoUrl, cashbackRate, onSeeDetails }: VoucherPanelProps) {
   const [logoError, setLogoError] = useState(false);
-  const showLogo = logoUrl && logoUrl.trim() !== '' && !logoError;
+  const logoUri = logoUrl && logoUrl.trim() !== '' ? normalizeImageUrl(logoUrl) : null;
+  const showLogo = !!logoUri && !logoError;
   const presetAmounts = [5, 20, 50, 100, 150];
   const [quantities, setQuantities] = useState<Record<number, number>>(
     presetAmounts.reduce((acc, value) => ({ ...acc, [value]: 0 }), {})
@@ -777,7 +780,7 @@ function VoucherPanel({ accentColor, partnerName, logoUrl, cashbackRate, onSeeDe
             <View style={styles.giftCardLogoWrap}>
               {showLogo ? (
                 <Image
-                  source={{ uri: logoUrl! }}
+                  source={{ uri: logoUri! }}
                   style={styles.giftCardLogo}
                   resizeMode="cover"
                   onError={() => setLogoError(true)}

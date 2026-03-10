@@ -24,39 +24,47 @@ export const rewardFormSchema = z.object({
   partnerId: z.string().optional(),
   partnerCategoryFilter: z.string().optional(),
   userType: z.string().optional(),
-  // Loteries
+  // Loteries (partnerId partagé avec Boosts)
   partnerIds: z.array(z.string()).optional(),
   startAt: z.string().optional(),
   endAt: z.string().optional(),
+  drawDate: z.string().optional(),
   pointsRequired: z.number().positive().optional(),
+  isTicketStockLimited: z.boolean().optional(),
+  totalTicketsAvailable: z.preprocess(
+    (v) => (v === '' || v === undefined || (typeof v === 'number' && Number.isNaN(v)) ? undefined : v),
+    z.number().int().positive().nullable().optional()
+  ),
   maxTicketsPerUser: z.number().positive().nullable().optional(),
+  showOnHome: z.boolean().optional(),
+  showOnRewards: z.boolean().optional(),
+  prizeType: z.string().optional(),
+  prizeTitle: z.string().optional(),
+  prizeDescription: z.string().optional(),
+  prizeValue: z.number().optional(),
+  prizeCurrency: z.string().optional(),
+  shortDescription: z.string().optional(),
   rules: z.string().optional(),
-  // Défis
+  // Défis (menu Badges & points)
+  category: z.string().optional(),
   challengePartnerCategory: z.string().optional(),
   challengePartnerIds: z.array(z.string()).optional(),
   challengeStartAt: z.string().optional(),
   challengeEndAt: z.string().optional(),
-  challengeTransactionCount: z.number().positive().optional(),
+  challengeTransactionCount: z.number().int().min(0).optional(),
+  challengeRewardPoints: z.number().int().min(0).optional(),
   // Commun
   conditions: z.string().optional()
 }).refine((data) => {
   if (data.type === 'badge') {
     return data.transactionCount !== undefined && data.partnerCategory !== undefined && data.partnerCategory !== '';
   }
-  if (data.type === 'lottery' || data.type === 'challenge' || data.type === 'boost') {
+  if (data.type === 'challenge' || data.type === 'boost') {
     return data.stock !== undefined;
   }
   return true;
 }, {
   message: 'Les champs requis pour ce type de récompense sont manquants'
-}).refine((data) => {
-  if (data.type === 'boost') {
-    return (data.partnerId !== undefined && data.partnerId !== '') ||
-           (data.partnerCategoryFilter !== undefined && data.partnerCategoryFilter !== '');
-  }
-  return true;
-}, {
-  message: 'Un boost doit avoir un partenaire ou une catégorie de partenaire'
 }).refine((data) => {
   if (data.type === 'lottery') {
     return data.startAt !== undefined && data.startAt !== '' &&
@@ -69,12 +77,11 @@ export const rewardFormSchema = z.object({
 }).refine((data) => {
   if (data.type === 'challenge') {
     return data.challengeStartAt !== undefined && data.challengeStartAt !== '' &&
-           data.challengeEndAt !== undefined && data.challengeEndAt !== '' &&
-           data.challengeTransactionCount !== undefined;
+           data.challengeEndAt !== undefined && data.challengeEndAt !== '';
   }
   return true;
 }, {
-  message: 'Un défi doit avoir des dates de début/fin et un nombre de transactions requis'
+  message: 'Un défi doit avoir des dates de début et de fin'
 });
 
 export type RewardFormInput = z.infer<typeof rewardFormSchema>;
@@ -98,14 +105,30 @@ export const updateRewardFormSchema = z.object({
   partnerIds: z.array(z.string()).optional(),
   startAt: z.string().optional(),
   endAt: z.string().optional(),
+  drawDate: z.string().optional(),
   pointsRequired: z.number().positive().optional(),
+  isTicketStockLimited: z.boolean().optional(),
+  totalTicketsAvailable: z.preprocess(
+    (v) => (v === '' || v === undefined || (typeof v === 'number' && Number.isNaN(v)) ? undefined : v),
+    z.number().int().positive().nullable().optional()
+  ),
   maxTicketsPerUser: z.number().positive().nullable().optional(),
+  showOnHome: z.boolean().optional(),
+  showOnRewards: z.boolean().optional(),
+  prizeType: z.string().optional(),
+  prizeTitle: z.string().optional(),
+  prizeDescription: z.string().optional(),
+  prizeValue: z.number().optional(),
+  prizeCurrency: z.string().optional(),
+  shortDescription: z.string().optional(),
   rules: z.string().optional(),
+  category: z.string().optional(),
   challengePartnerCategory: z.string().optional(),
   challengePartnerIds: z.array(z.string()).optional(),
   challengeStartAt: z.string().optional(),
   challengeEndAt: z.string().optional(),
-  challengeTransactionCount: z.number().positive().optional(),
+  challengeTransactionCount: z.number().int().min(0).optional(),
+  challengeRewardPoints: z.number().int().min(0).optional(),
   conditions: z.string().optional()
 });
 

@@ -127,7 +127,13 @@ export const createTransaction = async (userId: string, input: CreateTransaction
 
   notificationBus.emitEvent({
     type: 'transaction_created',
-    payload: { userId, transactionId: result.transaction.id, amount: input.amount }
+    payload: {
+      userId,
+      transactionId: result.transaction.id,
+      amount: input.amount,
+      partnerId: result.transaction.partnerId,
+      cashbackEarned: response.cashbackEarned,
+    },
   });
   transactionCounter.inc();
 

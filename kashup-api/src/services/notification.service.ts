@@ -1,6 +1,10 @@
 import prisma from '../config/prisma';
 import { NOTIFICATION_CATEGORIES } from '../types/domain';
 import { notificationBus, NotificationEvent } from '../events/event-bus';
+import { checkChallengeProgress } from './challengeEngine';
+import { addCashbackContribution } from './communityJackpotEngine';
+import { addLotteryContribution } from './communityJackpotEngine';
+import { addChallengeContribution } from './communityJackpotEngine';
 
 export const listNotificationsForUser = (userId: string) => {
   return prisma.notification.findMany({
@@ -50,6 +54,19 @@ const handlers: Record<NotificationEvent['type'], (payload: any) => Promise<void
       category: 'cashback',
       metadata: payload
     });
+    checkChallengeProgress(payload.userId, 'transaction_created', {
+      transaction_created: {
+        transactionId: payload.transactionId,
+        userId: payload.userId,
+        partnerId: payload.partnerId,
+        amount: payload.amount,
+      },
+    }).catch((err) => console.error('[challengeEngine] transaction_created:', err));
+    if (payload.cashbackEarned != null && payload.cashbackEarned > 0) {
+      addCashbackContribution(payload.userId, payload.cashbackEarned, payload.amount).catch((err) =>
+        console.error('[communityJackpot] addCashbackContribution:', err)
+      );
+    }
   },
   boost_purchased: async (payload) => {
     await createNotification(payload.userId, {
@@ -74,12 +91,33 @@ const handlers: Record<NotificationEvent['type'], (payload: any) => Promise<void
       category: 'system',
       metadata: payload
     });
-  }
+  },
+  lottery_joined: async (payload) => {
+    // Notification déjà créée dans lotteryEngine.enterLottery
+    addLotteryContribution(payload.userId, payload.lotteryId).catch((err) =>
+      console.error('[communityJackpot] addLotteryContribution:', err)
+    );
+  },
+  lottery_winner: async () => {
+    // Notification déjà créée dans lotteryEngine.notifyWinner
+  },
+  challenge_completed: async (payload) => {
+    addChallengeContribution(payload.userId, payload.challengeId).catch((err) =>
+      console.error('[communityJackpot] addChallengeContribution:', err)
+    );
+  },
+  jackpot_winner: async () => {
+    // Notification déjà créée dans communityJackpotEngine.drawJackpotWinner
+  },
 };
 
 notificationBus.on('transaction_created', handlers.transaction_created);
 notificationBus.on('boost_purchased', handlers.boost_purchased);
 notificationBus.on('drimify_experience_result', handlers.drimify_experience_result);
 notificationBus.on('powens_connection_sync', handlers.powens_connection_sync);
+notificationBus.on('lottery_joined', handlers.lottery_joined);
+notificationBus.on('lottery_winner', handlers.lottery_winner);
+notificationBus.on('challenge_completed', handlers.challenge_completed);
+notificationBus.on('jackpot_winner', handlers.jackpot_winner);
 
 

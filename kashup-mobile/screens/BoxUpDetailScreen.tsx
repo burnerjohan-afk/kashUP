@@ -36,24 +36,20 @@ const formatCashback = (v: number) =>
 const formatPoints = (v: number) => `${v.toLocaleString('fr-FR')} pts`;
 
 type BoxDetailRoute = RouteProp<MainStackParamList, 'BoxUpDetail'>;
-/** Image symbolisant l'inconnu / la surprise pour les Box UP (cadeau mystère) — cadeau emballé rouge et noir */
-const SURPRISE_BOX_IMAGE =
-  'https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?auto=format&fit=crop&w=1000&q=60';
-
-/** URL d'image pour une box : si nom contient "SURPRISE" ou pas d'image, retourne l'image surprise */
+/** URL d'image pour une box : uniquement l'image enregistrée au back office. Pas d'image par défaut. */
 function getBoxImageUri(box: {
   heroImageUrl?: string | null;
   imageUrl?: string | null;
   nom?: string;
   title?: string;
-}): string {
-  const name = (box.nom ?? box.title ?? '').toString().toUpperCase();
-  if (name.includes('SURPRISE')) return SURPRISE_BOX_IMAGE;
-  const raw = box.heroImageUrl ?? box.imageUrl;
+} & Record<string, unknown>): string | null {
+  const raw =
+    box.heroImageUrl ?? box.imageUrl ??
+    (box.hero_image_url as string | undefined) ?? (box.image_url as string | undefined);
   if (raw && typeof raw === 'string' && raw.trim() !== '') {
     return normalizeImageUrl(raw);
   }
-  return SURPRISE_BOX_IMAGE;
+  return null;
 }
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -305,8 +301,11 @@ export default function BoxUpDetailScreen() {
           { useNativeDriver: false }
         )}>
         <View style={{ height: headerSpacerHeight }} />
+        {(() => {
+          const boxImageUri = getBoxImageUri(box);
+          return boxImageUri ? (
         <ImageBackground
-          source={{ uri: getBoxImageUri(box) }}
+          source={{ uri: boxImageUri }}
           style={[styles.heroImage, { marginTop: -10 }]}>
           <LinearGradient
             colors={['rgba(0,0,0,0.65)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.05)']}
@@ -346,6 +345,52 @@ export default function BoxUpDetailScreen() {
             </View>
           </View>
         </ImageBackground>
+        ) : (
+        <View style={[styles.heroImage, styles.heroImagePlaceholder]}>
+          <LinearGradient
+            colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.heroImagePlaceholderCenter}>
+            <Ionicons name="gift-outline" size={64} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.heroImagePlaceholderText}>Pas d'image</Text>
+          </View>
+          <View style={styles.heroTopRow}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Text style={styles.backButtonText}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.badgeText}>Multi-partenaires</Text>
+          </View>
+          <View style={styles.heroTexts}>
+            <Text style={styles.heroTitle}>{box.title ?? box.nom ?? 'Box'}</Text>
+            <Text style={styles.heroSubtitle}>{box.shortDescription ?? box.description ?? ''}</Text>
+            <Text style={styles.heroPrice}>À partir de {(box.priceFrom ?? box.value ?? 0).toFixed(0)} €</Text>
+            <View style={styles.cashbackRow}>
+              <View style={styles.cashbackItem}>
+                <Ionicons
+                  name="pricetag"
+                  size={12}
+                  color={(box.cashbackRate != null && box.cashbackRate !== '' && Number(box.cashbackRate) >= 0) ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.7)'}
+                />
+                <Text style={[
+                  styles.heroCashbackRate,
+                  (box.cashbackRate == null || box.cashbackRate === '' || Number(box.cashbackRate) < 0) && styles.heroCashbackRateEmpty,
+                ]}>
+                  {(box.cashbackRate != null && box.cashbackRate !== '' && Number(box.cashbackRate) >= 0)
+                    ? `${Number(box.cashbackRate)}%`
+                    : '—'}
+                </Text>
+                <Text style={styles.heroCashbackItemLabel}>
+                  {(box.cashbackRate != null && box.cashbackRate !== '' && Number(box.cashbackRate) >= 0)
+                    ? "À l'achat"
+                    : 'Non renseigné'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        );
+        })()}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Ce que contient la Box</Text>
@@ -658,6 +703,19 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 32,
     overflow: 'hidden',
     marginBottom: spacing.lg,
+  },
+  heroImagePlaceholder: {
+    backgroundColor: '#374151',
+  },
+  heroImagePlaceholderCenter: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  heroImagePlaceholderText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
   },
   heroTopRow: {
     flexDirection: 'row',

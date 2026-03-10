@@ -44,7 +44,7 @@ import {
 import { usePaymentSheet } from '../src/stubs/stripePaymentSheet';
 import { getPartners } from '@/src/services/partnerService';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
 import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import { useNotifications } from '../context/NotificationsContext';
 import type { Partner } from '../data/partners';
@@ -140,29 +140,20 @@ const getAccentColor = (seed: string) => {
 const fallbackHeroImage =
   'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1000&q=60';
 
-/** Image symbolisant l'inconnu / la surprise pour les Box UP (cadeau mystère) — URL fiable pour chargement dans l'app */
-/** Cadeau emballé rouge et noir pour les Box UP surprise */
-const SURPRISE_BOX_IMAGE =
-  'https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?auto=format&fit=crop&w=1000&q=60';
-
-/** URL d'image pour une box (heroImageUrl, imageUrl, ou snake_case), sinon image surprise */
+/** URL d'image pour une box : uniquement l'image enregistrée au back office (heroImageUrl, imageUrl ou snake_case). Pas d'image par défaut. */
 function getBoxImageUri(box: {
   heroImageUrl?: string | null;
   imageUrl?: string | null;
   nom?: string;
   title?: string;
-} & Record<string, unknown>): string {
-  const name = (box.nom ?? box.title ?? '').toString().toUpperCase();
-  if (name.includes('SURPRISE')) {
-    return SURPRISE_BOX_IMAGE;
-  }
+} & Record<string, unknown>): string | null {
   const raw =
     box.heroImageUrl ?? box.imageUrl ??
     (box.hero_image_url as string | undefined) ?? (box.image_url as string | undefined);
   if (raw && typeof raw === 'string' && raw.trim() !== '') {
     return normalizeImageUrl(raw);
   }
-  return SURPRISE_BOX_IMAGE;
+  return null;
 }
 
 type GiftCardsNav = NativeStackNavigationProp<MainStackParamList>;
@@ -171,7 +162,10 @@ const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
 /** Hauteur du bandeau (TabScreenHeader) pour positionner le bloc sticky 4px en dessous */
 const getBandeauStickyOffset = (insets: { top: number }) =>
-  Math.max(0, insets.top - 36) + TAB_HEADER_HEIGHT + 4;
+  Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 4;
+
+/** Marge bas pour défilement au-dessus du bandeau (tab bar) */
+const BOTTOM_TAB_AREA = 90;
 
 export default function GiftCardsScreen() {
   const navigation = useNavigation<GiftCardsNav>();
@@ -847,7 +841,7 @@ const [contentError, setContentError] = useState<string | null>(null);
           onPress={() => handleUseVoucher(payload)}>
           {partner?.logoUrl ? (
             <View style={styles.voucherLogoWrap}>
-              <Image source={{ uri: partner.logoUrl }} style={styles.voucherLogo} />
+              <Image source={{ uri: normalizeImageUrl(partner.logoUrl) }} style={styles.voucherLogo} />
             </View>
           ) : null}
           <Text style={styles.voucherPersonalCopy}>
@@ -1475,10 +1469,13 @@ const [contentError, setContentError] = useState<string | null>(null);
       ) : boxTemplates.length === 0 ? (
         <Text style={styles.placeholderText}>Les Box UP seront bientôt disponibles.</Text>
       ) : (
-        boxTemplates.map((box) => (
+        boxTemplates.map((box) => {
+          const boxImageUri = getBoxImageUri(box);
+          return (
           <View key={box.id} style={styles.boxCard}>
+            {boxImageUri ? (
             <ImageBackground
-              source={{ uri: getBoxImageUri(box) }}
+              source={{ uri: boxImageUri }}
               style={styles.boxImage}
               imageStyle={styles.boxImageRadius}>
               <LinearGradient
@@ -1491,6 +1488,23 @@ const [contentError, setContentError] = useState<string | null>(null);
                 <Text style={styles.boxSubtitle}>{box.shortDescription ?? box.description}</Text>
               </LinearGradient>
             </ImageBackground>
+            ) : (
+            <View style={[styles.boxImage, styles.boxImagePlaceholder]}>
+              <LinearGradient
+                colors={['rgba(0,0,0,0.25)', 'rgba(0,0,0,0.1)']}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.boxImagePlaceholderCenter}>
+                <Ionicons name="gift-outline" size={48} color="rgba(255,255,255,0.5)" />
+                <Text style={styles.boxImagePlaceholderText}>Pas d'image</Text>
+              </View>
+              <View style={styles.boxImageOverlay}>
+                <Text style={styles.boxBadge}>Multi-partenaires</Text>
+                <Text style={styles.boxTitle}>{box.nom ?? box.title}</Text>
+                <Text style={styles.boxSubtitle}>{box.shortDescription ?? box.description}</Text>
+              </View>
+            </View>
+            )}
             <View style={styles.boxInfo}>
               <Text style={styles.boxPrice}>À partir de {(box.value ?? box.priceFrom).toFixed(0)} €</Text>
               <View style={styles.cashbackRow}>
@@ -1563,7 +1577,8 @@ const [contentError, setContentError] = useState<string | null>(null);
               </TouchableOpacity>
             </View>
           </View>
-        ))
+          );
+        })
       )}
     </View>
   );
@@ -1594,7 +1609,10 @@ const [contentError, setContentError] = useState<string | null>(null);
         style={styles.scrollFill}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_HEIGHT + 15 },
+          {
+            paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15,
+            paddingBottom: Math.max(spacing.xl * 2, insets.bottom + BOTTOM_TAB_AREA),
+          },
         ]}
         stickyHeaderIndices={
           activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? [contentError ? 4 : 3] : []
@@ -1616,18 +1634,30 @@ const [contentError, setContentError] = useState<string | null>(null);
           </TouchableOpacity>
         )}
 
-        <View style={styles.tabHeader}>
+        <View style={styles.giftCardsTabs}>
           {(['mes', 'cartes-up', 'box-up'] as TabKey[]).map((tab) => {
             const active = activeTab === tab;
+            const label = tab === 'mes' ? 'Mes cartes' : tab === 'cartes-up' ? 'Cartes UP' : 'Box UP';
             return (
               <TouchableOpacity
                 key={tab}
-                style={styles.tabButton}
-                onPress={() => setActiveTab(tab)}>
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                  {tab === 'mes' ? 'Mes cartes' : tab === 'cartes-up' ? 'Cartes UP' : 'Box UP'}
-                </Text>
-                <View style={[styles.tabUnderline, active && styles.tabUnderlineActive]} />
+                style={[styles.giftCardsTabButtonWrap, active && styles.giftCardsTabButtonWrapActive]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.85}>
+                {active ? (
+                  <LinearGradient
+                    colors={[...CARD_GRADIENT_COLORS]}
+                    locations={[...CARD_GRADIENT_LOCATIONS]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.giftCardsTabButton}>
+                    <Text style={styles.giftCardsTabButtonTextActive}>{label}</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.giftCardsTabButton}>
+                    <Text style={styles.giftCardsTabButtonText}>{label}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -2850,39 +2880,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  tabHeader: {
+  /** Menu à onglets type pilule (comme Offres KashUP sur détail partenaire) */
+  giftCardsTabs: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    backgroundColor: '#F3F4F6',
+    padding: 4,
+    borderRadius: 999,
+    marginBottom: spacing.sm,
   },
-  tabButton: {
+  giftCardsTabButtonWrap: {
     flex: 1,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  giftCardsTabButtonWrapActive: {
+    overflow: 'hidden',
+  },
+  giftCardsTabButton: {
+    paddingVertical: 10,
+    borderRadius: 999,
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    justifyContent: 'center',
   },
-  tabLabel: {
-    fontSize: 14,
+  giftCardsTabButtonText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: '#94A3B8',
   },
-  tabLabelActive: {
-    color: colors.primaryBlue,
-  },
-  tabUnderline: {
-    marginTop: spacing.xs,
-    height: 3,
-    width: '30%',
-    borderRadius: radius.pill,
-    backgroundColor: 'transparent',
-  },
-  tabUnderlineActive: {
-    backgroundColor: colors.primaryBlue,
+  giftCardsTabButtonTextActive: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   section: {
     gap: spacing.md,
@@ -3307,7 +3335,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md - 4,
     gap: spacing.md,
   },
   carteTestBodyText: {
@@ -3317,6 +3346,8 @@ const styles = StyleSheet.create({
   carteTestMacaronLogoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
     marginTop: spacing.sm,
     gap: spacing.sm,
   },
@@ -3328,6 +3359,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.greyBorder,
     overflow: 'hidden',
+    marginLeft: 'auto',
+    marginTop: 4,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 4,
@@ -3356,6 +3389,7 @@ const styles = StyleSheet.create({
   },
   carteTestMacaron: {
     alignSelf: 'flex-start',
+    marginTop: 18,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 12,
@@ -3624,6 +3658,19 @@ const styles = StyleSheet.create({
   boxImage: {
     height: 170,
     width: '100%',
+  },
+  boxImagePlaceholder: {
+    backgroundColor: colors.slateBackground,
+  },
+  boxImagePlaceholderCenter: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  boxImagePlaceholderText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
   },
   boxImageRadius: {
     borderTopLeftRadius: radius.lg,

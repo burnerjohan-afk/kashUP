@@ -1,6 +1,6 @@
 import React from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
@@ -69,8 +69,11 @@ const SECTIONS: Section[] = [
   },
 ];
 
+const BOTTOM_TAB_BAR_HEIGHT = 90;
+
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileNav>();
+  const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { data: profile, loading: profileLoading, error: profileError, refetch } = useUserProfile();
   const displayName = profile?.firstName ?? user?.firstName ?? 'Invité';
@@ -81,23 +84,22 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <LinearGradient
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
+      <View style={styles.bandeauBlanc}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={20} color={colors.textMain} />
+        </TouchableOpacity>
+        <Text style={styles.toolbarTitle}>Profil KashUP</Text>
+        <View style={{ width: 40 }} />
+      </View>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + BOTTOM_TAB_BAR_HEIGHT }]}
         refreshControl={<RefreshControl refreshing={profileLoading} onRefresh={refetch} />}
       >
-        <View style={styles.toolbar}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={colors.textMain} />
-          </TouchableOpacity>
-          <Text style={styles.toolbarTitle}>Profil KashUP</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
         <View style={styles.hero}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{displayName.slice(0, 1).toUpperCase()}</Text>
@@ -154,7 +156,22 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+    paddingTop: spacing.lg + 8,
     gap: spacing.md,
+  },
+  bandeauBlanc: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md + 4,
+    paddingBottom: spacing.md + 4,
+    minHeight: 56,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.greyBorder,
+    zIndex: 10,
+    elevation: 10,
   },
   toolbar: {
     flexDirection: 'row',

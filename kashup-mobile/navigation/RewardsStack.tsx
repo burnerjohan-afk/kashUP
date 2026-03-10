@@ -4,6 +4,7 @@ import { RouteProp } from '@react-navigation/native';
 
 import RewardsScreen from '../screens/RewardsScreen';
 import ChallengeDetailScreen from '../screens/ChallengeDetailScreen';
+import ChallengeCategoryScreen from '../screens/ChallengeCategoryScreen';
 import LotteryDetailScreen from '../screens/LotteryDetailScreen';
 import BadgeDetailScreen from '../screens/BadgeDetailScreen';
 import Header from '../components/Header';
@@ -12,8 +13,9 @@ import type { BottomTabParamList } from './BottomTabs';
 
 export type RewardsStackParamList = {
   RewardsHome: BottomTabParamList['Rewards'];
+  ChallengeCategory: { category: string; label: string };
   ChallengeDetail: { challenge: RewardChallenge };
-  LotteryDetail: { lottery: RewardLottery };
+  LotteryDetail: { lottery?: RewardLottery; lotteryId?: string };
   BadgeDetail: { badge: RewardBadge };
 };
 
@@ -35,6 +37,7 @@ export default function RewardsStack({ route }: Props) {
         initialParams={route.params}
         options={{ headerShown: false }}
       />
+      <Stack.Screen name="ChallengeCategory" component={ChallengeCategoryScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="LotteryDetail" component={LotteryDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="BadgeDetail" component={BadgeDetailScreen} options={{ headerShown: false }} />

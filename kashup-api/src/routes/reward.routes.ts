@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { createRewardHandler, getAllRewards, getBadges, getBoosts, getRewardsByType, purchaseBoostHandler, updateRewardHandler } from '../controllers/reward.controller';
-import { getChallenges, getLotteries, getRewardHistory, joinLotteryHandler } from '../controllers/rewardHistory.controller';
-import { authMiddleware, requireRoles } from '../middlewares/auth';
+import { createRewardHandler, deleteRewardHandler, getAllRewards, getBadges, getBoosts, getRewardsByType, purchaseBoostHandler, updateRewardHandler } from '../controllers/reward.controller';
+import { getChallengeCategories, getChallenges, getLotteries, getLotteriesForHome, getLotteryByIdHandler, getRewardHistory, joinLotteryHandler } from '../controllers/rewardHistory.controller';
+import { authMiddleware, optionalAuthMiddleware, requireRoles } from '../middlewares/auth';
 import { USER_ROLE } from '../types/domain';
-import { uploadSingle } from '../config/upload';
+import { uploadSingleOptional } from '../config/upload';
 
 const router = Router();
 
@@ -12,9 +12,12 @@ router.get('/boosts', getBoosts);
 router.post('/boosts/:id/purchase', authMiddleware, purchaseBoostHandler);
 router.get('/badges', getBadges);
 router.get('/history', authMiddleware, getRewardHistory);
-router.get('/lotteries', getLotteries);
+router.get('/lotteries', optionalAuthMiddleware, getLotteries);
+router.get('/lotteries/home', optionalAuthMiddleware, getLotteriesForHome);
+router.get('/lotteries/:id', optionalAuthMiddleware, getLotteryByIdHandler);
 router.post('/lotteries/:id/join', authMiddleware, joinLotteryHandler);
-router.get('/challenges', getChallenges);
+router.get('/challenges/categories', authMiddleware, getChallengeCategories);
+router.get('/challenges', optionalAuthMiddleware, getChallenges);
 
 // Routes admin (validation faite dans le handler après conversion FormData → types)
 router.get('/', authMiddleware, requireRoles(USER_ROLE.admin), getAllRewards);
@@ -23,15 +26,21 @@ router.post(
   '/',
   authMiddleware,
   requireRoles(USER_ROLE.admin),
-  uploadSingle('image'),
+  uploadSingleOptional('image'),
   createRewardHandler
 );
 router.patch(
   '/:id',
   authMiddleware,
   requireRoles(USER_ROLE.admin),
-  uploadSingle('image'),
+  uploadSingleOptional('image'),
   updateRewardHandler
+);
+router.delete(
+  '/:id',
+  authMiddleware,
+  requireRoles(USER_ROLE.admin),
+  deleteRewardHandler
 );
 
 export default router;

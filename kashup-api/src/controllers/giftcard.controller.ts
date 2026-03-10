@@ -47,6 +47,7 @@ import { sendSuccess } from '../utils/response';
 import { extractFiles, processUploadedFile } from '../services/upload.service';
 import { parseListParams } from '../utils/listing';
 import { toStringParam } from '../utils/queryParams';
+import { buildAbsoluteUrl } from '../utils/network';
 
 export const getGiftCardCatalog = asyncHandler(async (_req: Request, res: Response) => {
   const params = parseListParams(_req.query);
@@ -68,28 +69,38 @@ export const getGiftCardOffers = asyncHandler(async (_req: Request, res: Respons
   sendSuccess(res, data);
 });
 
-/** Map GiftBox (Prisma) vers format BoxUp aligné back office (nom, partenaires avec offrePartenaire, conditions) */
-function mapBoxToBoxUpFormat(box: {
-  id: string;
-  name: string;
-  description: string;
-  imageUrl: string | null;
-  cashbackInfo: string | null;
-  value: number;
-  cashbackRate?: number | null;
-  active: boolean;
-  items: Array<{
-    partnerId: string | null;
-    title: string;
-    description: string | null;
-    partner: { id: string; name: string; logoUrl: string | null } | null;
-  }>;
-}) {
+/** Map GiftBox (Prisma) vers format BoxUp pour l'app : image enregistrée au back office exposée en imageUrl + heroImageUrl (URL absolue si chemin relatif) */
+function mapBoxToBoxUpFormat(
+  req: Request,
+  box: {
+    id: string;
+    name: string;
+    description: string;
+    imageUrl: string | null;
+    cashbackInfo: string | null;
+    value: number;
+    cashbackRate?: number | null;
+    active: boolean;
+    items: Array<{
+      partnerId: string | null;
+      title: string;
+      description: string | null;
+      partner: { id: string; name: string; logoUrl: string | null } | null;
+    }>;
+  }
+) {
+  const rawImage = box.imageUrl ?? undefined;
+  const imageUrl =
+    rawImage && typeof rawImage === 'string' && rawImage.trim() !== ''
+      ? rawImage.startsWith('http://') || rawImage.startsWith('https://')
+        ? rawImage
+        : buildAbsoluteUrl(req, rawImage.startsWith('/') ? rawImage : `/${rawImage}`)
+      : undefined;
   return {
     id: box.id,
     nom: box.name,
     description: box.description,
-    imageUrl: box.imageUrl ?? undefined,
+    imageUrl,
     value: box.value,
     cashbackRate: box.cashbackRate ?? undefined,
     commentCaMarche: box.cashbackInfo ?? undefined,
@@ -100,11 +111,10 @@ function mapBoxToBoxUpFormat(box: {
       offrePartenaire: item.title,
       conditions: item.description ?? undefined,
     })),
-    // Champs conservés pour compatibilité affichage app
     title: box.name,
     shortDescription: box.description,
     priceFrom: box.value,
-    heroImageUrl: box.imageUrl ?? undefined,
+    heroImageUrl: imageUrl,
     cashbackInfo: box.cashbackInfo ?? undefined,
     partners: box.items.map((i) => ({
       id: i.partner?.id ?? '',
@@ -119,16 +129,16 @@ function mapBoxToBoxUpFormat(box: {
   };
 }
 
-export const getGiftCardBoxes = asyncHandler(async (_req: Request, res: Response) => {
-  const params = parseListParams(_req.query);
+export const getGiftCardBoxes = asyncHandler(async (req: Request, res: Response) => {
+  const params = parseListParams(req.query);
   const { data, meta } = await listGiftBoxes(params);
-  const appData = (Array.isArray(data) ? data : []).map(mapBoxToBoxUpFormat);
+  const appData = (Array.isArray(data) ? data : []).map((box) => mapBoxToBoxUpFormat(req, box));
   sendSuccess(res, appData, { pagination: meta });
 });
 
 export const getGiftCardBoxDetail = asyncHandler(async (req: Request, res: Response) => {
   const box = await getGiftBoxById(req.params.id);
-  sendSuccess(res, box);
+  sendSuccess(res, mapBoxToBoxUpFormat(req, box as Parameters<typeof mapBoxToBoxUpFormat>[1]));
 });
 
 export const getGiftCardsForUser = asyncHandler(async (req: Request, res: Response) => {

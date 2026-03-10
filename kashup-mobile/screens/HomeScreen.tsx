@@ -2,13 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { CompositeNavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video, ResizeMode } from 'expo-av';
+import { ResizeMode } from 'expo-av';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, Image, Linking, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { apiOrigin } from '@/src/config/runtime';
 import type { Offer } from '@/src/services/offers';
+import { AdVideoPlayer } from '@/src/components/AdVideoPlayer';
 import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import { useCurrentOffers } from '@/src/hooks/useCurrentOffers';
 import { useHomeBanners } from '@/src/hooks/useHomeBanners';
@@ -17,6 +17,9 @@ import { useUserProfile } from '@/src/hooks/useUserProfile';
 import { useWallet } from '@/src/hooks/useWallet';
 import { useWebhookEvents } from '@/src/hooks/useWebhookEvents';
 import { adaptPartnerFromApi, PartnerViewModel } from '@/src/utils/partnerAdapter';
+import { useLotteriesForHome } from '@/src/hooks/useLotteries';
+import { useJackpot } from '@/src/hooks/useJackpot';
+import LotteryCountdown from '@/src/components/LotteryCountdown';
 import { colors, CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, radius, spacing } from '../constants/theme';
 import { useNotifications } from '../context/NotificationsContext';
 import { HomeStackParamList } from '../navigation/HomeStack';
@@ -62,9 +65,9 @@ const getPartnerImage = (partnerName: string, categoryId?: string): string => {
 // Mapping des logos depuis internet
 // Priorité: 1) logoUrl de l'API, 2) getPartnerLogo, 3) null
 const getPartnerLogo = (partnerName: string, apiLogoUrl?: string | null): string | null => {
-  // Priorité 1: Utiliser le logo de l'API s'il existe
+  // Priorité 1: Utiliser le logo de l'API (passer par le proxy pour Blob privé)
   if (apiLogoUrl && apiLogoUrl.trim() !== '') {
-    return apiLogoUrl;
+    return normalizeImageUrl(apiLogoUrl);
   }
   
   // Priorité 2: Logo depuis mapping
@@ -128,6 +131,8 @@ export default function HomeScreen() {
   } = usePartners();
   const { data: homeBanners, loading: bannersLoading, refetch: refetchBanners } = useHomeBanners();
   const { data: currentOffers, refetch: refetchOffers } = useCurrentOffers();
+  const { lotteries: homeLotteries, loading: lotteriesLoading, refetch: refetchLotteries } = useLotteriesForHome();
+  const { jackpot, refetch: refetchJackpot } = useJackpot();
   const [adIndex, setAdIndex] = useState(0);
   const [highlightedCardTab, setHighlightedCardTab] = useState<'don' | 'cartes' | 'loteries' | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
@@ -245,8 +250,8 @@ export default function HomeScreen() {
   const refreshing = profileLoading || walletLoading || partnersLoading || bannersLoading;
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([refetchProfile(), refetchWallet(), refetchPartners(), refetchBanners(), refetchOffers()]);
-  }, [refetchProfile, refetchWallet, refetchPartners, refetchBanners, refetchOffers]);
+    await Promise.all([refetchProfile(), refetchWallet(), refetchPartners(), refetchBanners(), refetchOffers(), refetchLotteries(), refetchJackpot()]);
+  }, [refetchProfile, refetchWallet, refetchPartners, refetchBanners, refetchOffers, refetchLotteries, refetchJackpot]);
 
   const handlePartnerPress = (partnerId: string) => {
     navigation.navigate('PartnerDetail', { partnerId });
@@ -286,6 +291,10 @@ export default function HomeScreen() {
     }
   };
 
+  const handleJackpotPress = () => {
+    navigation.navigate('Jackpot' as never);
+  };
+
   // Formatage des montants
   const formatCashback = (amount: number | null | undefined): string => {
     if (amount == null) return '';
@@ -304,7 +313,7 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFill}
       />
       {/* HEADER FIXE */}
-      <View style={[styles.header, { paddingTop: Math.max(0, insets.top - 36) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(0, insets.top - 36) + 38 }]}>
         <View style={styles.headerTitleBlock}>
           <Image
             source={require('../assets/images/logo-kashup-up.png')}
@@ -341,7 +350,7 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(0, insets.top - 36) + HEADER_CONTENT_HEIGHT + spacing.lg }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(0, insets.top - 36) + 38 + HEADER_CONTENT_HEIGHT + spacing.lg }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         {/* Carte Mon KashUP — forme carte bancaire + fond type vagues/ malachite */}
@@ -427,21 +436,8 @@ export default function HomeScreen() {
               scrollEventThrottle={16}
               contentContainerStyle={styles.adsScrollContent}>
               {homeBanners.map((banner, index) => {
-                const base = (apiOrigin || '').replace(/\/+$/, '');
-                const toMediaUrl = (s: string | null | undefined): string | null => {
-                  if (!s) return null;
-                  if (s.startsWith('http')) {
-                    try {
-                      const pathname = new URL(s).pathname;
-                      return pathname ? `${base}${pathname}` : s;
-                    } catch {
-                      return s;
-                    }
-                  }
-                  return `${base}${s.startsWith('/') ? s : `/${s}`}`;
-                };
-                const imageUri = banner.imageUrl ? toMediaUrl(banner.imageUrl) : null;
-                const videoUri = banner.videoUrl ? toMediaUrl(banner.videoUrl) : null;
+                const imageUri = banner.imageUrl ? normalizeImageUrl(banner.imageUrl) : null;
+                const videoUri = banner.videoUrl ? normalizeImageUrl(banner.videoUrl) : null;
                 const onPress = () => {
                   if (banner.linkUrl) Linking.openURL(banner.linkUrl);
                 };
@@ -455,13 +451,11 @@ export default function HomeScreen() {
                     {banner.mediaType === 'video' && videoUri ? (
                       <View style={styles.adMediaContainer}>
                         {isVideoActive ? (
-                          <Video
-                            source={{ uri: videoUri }}
-                            style={styles.adImage}
-                            useNativeControls={false}
+                          <AdVideoPlayer
+                            videoUri={videoUri}
+                            bannerId={banner.id}
                             shouldPlay
-                            isLooping={false}
-                            resizeMode={ResizeMode.CONTAIN}
+                            style={styles.adImage}
                             onPlaybackStatusUpdate={(status) => {
                               if (status.isLoaded && status.didJustFinishAndNotLoop) {
                                 goToNextBanner();
@@ -501,6 +495,113 @@ export default function HomeScreen() {
                 />
               ))}
             </View>
+          </View>
+        )}
+
+        {/* Bloc Jackpot — compact, dégradé doré, texte vert */}
+        {jackpot && (
+          <TouchableOpacity
+            style={styles.jackpotBlock}
+            onPress={handleJackpotPress}
+            activeOpacity={0.92}>
+            <LinearGradient
+              colors={['#ffd700', '#ffd700', '#ffd700', '#e6c200']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.jackpotCard}>
+              <View style={styles.jackpotRow}>
+                <View style={styles.jackpotLeft}>
+                  <View style={styles.jackpotTitleRow}>
+                    <Ionicons name="trophy" size={18} color={colors.black} />
+                    <Text style={styles.jackpotLabel}>JACKPOT KASHUP</Text>
+                  </View>
+                  <Text style={styles.jackpotAmount}>
+                    {jackpot.currentAmount.toFixed(0)} {jackpot.currency}
+                  </Text>
+                </View>
+                <View style={styles.jackpotRight}>
+                  <View style={styles.jackpotProgressMini}>
+                    <Text style={styles.jackpotProgressLabel}>Achats chez partenaires</Text>
+                    <Text style={styles.jackpotProgressValue} numberOfLines={1}>
+                      {jackpot.progress.partnerPurchasesAmount.toFixed(0)} € / {jackpot.progress.partnerPurchasesThreshold.toFixed(0)} €
+                    </Text>
+                    <View style={styles.jackpotProgressBarBg}>
+                      <View style={[styles.jackpotProgressBarFill, { width: `${Math.min(100, jackpot.progress.partnerPurchasesThreshold > 0 ? (jackpot.progress.partnerPurchasesAmount / jackpot.progress.partnerPurchasesThreshold) * 100 : 0)}%` }]} />
+                    </View>
+                  </View>
+                  <View style={[styles.jackpotProgressMini, { marginBottom: 8 }]}>
+                    <Text style={styles.jackpotProgressLabel}>Participations (loteries, défis)</Text>
+                    <Text style={styles.jackpotProgressValue} numberOfLines={1}>
+                      {jackpot.progress.actions} / {jackpot.progress.actionsThreshold}
+                    </Text>
+                    <View style={styles.jackpotProgressBarBg}>
+                      <View style={[styles.jackpotProgressBarFill, { width: `${Math.min(100, jackpot.progress.actionsThreshold > 0 ? (jackpot.progress.actions / jackpot.progress.actionsThreshold) * 100 : 0)}%` }]} />
+                    </View>
+                  </View>
+                  <View style={styles.jackpotCtaRow}>
+                    <Text style={styles.jackpotCtaText}>Voir</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.black} />
+                  </View>
+                </View>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
+        {/* Loteries KashUP — triées de la date de tirage la plus proche à la plus éloignée */}
+        {homeLotteries.length > 0 && (
+          <View style={styles.offresSection}>
+            <View style={styles.offresSectionHeader}>
+              <Text style={styles.offresSectionTitle}>Loteries KashUP</Text>
+              <TouchableOpacity onPress={handleLotteryPress} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={styles.offresSeeAll}>Voir les loteries</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.offresCarousel}
+              snapToInterval={OFFER_CARD_WIDTH + spacing.md}
+              snapToAlignment="start"
+              decelerationRate="fast">
+              {homeLotteries.map((lottery) => (
+                <TouchableOpacity
+                  key={lottery.id}
+                  style={[styles.offreCard, styles.lotteryHomeCardWrap]}
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    const tabNav = navigation.getParent()?.getParent?.();
+                    (tabNav as any)?.navigate?.('Rewards', {
+                      screen: 'LotteryDetail',
+                      params: { lotteryId: lottery.id, lottery },
+                    });
+                  }}>
+                  {lottery.imageUrl ? (
+                    <Image
+                      source={{ uri: normalizeImageUrl(lottery.imageUrl) }}
+                      style={styles.lotteryHomeImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.lotteryHomeImagePlaceholder}>
+                      <Ionicons name="ticket-outline" size={28} color={colors.greyInactive} />
+                    </View>
+                  )}
+                  <View style={styles.lotteryHomeBody}>
+                    <Text style={styles.lotteryHomeTitle} numberOfLines={2}>{lottery.title}</Text>
+                    <Text style={styles.lotteryHomePts}>{lottery.pointsPerTicket ?? 100} pts / ticket</Text>
+                    {lottery.isTicketStockLimited && lottery.ticketsRemaining != null && (
+                      <Text style={styles.lotteryHomeRest}>
+                        {lottery.ticketsRemaining <= 0 ? 'Épuisé' : `${lottery.ticketsRemaining} restants`}
+                      </Text>
+                    )}
+                    {lottery.drawDate && (
+                      <LotteryCountdown drawDate={lottery.drawDate} showIcon={true} textStyle={styles.lotteryHomeCountdown} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -1006,6 +1107,7 @@ const PEPITE_CARD_WIDTH = 260;
 const OFFER_CARD_WIDTH = 280;
 const AD_PEEK = 20;
 const AD_CARD_WIDTH = SCREEN_WIDTH - 2 * AD_PEEK;
+const AD_CARD_HEIGHT = 280;
 const AD_GAP = 10;
 const AD_SNAP_INTERVAL = AD_CARD_WIDTH + AD_GAP;
 
@@ -1094,7 +1196,7 @@ const styles = StyleSheet.create({
   },
   adCard: {
     width: AD_CARD_WIDTH,
-    height: AD_CARD_WIDTH,
+    height: AD_CARD_HEIGHT,
     marginRight: AD_GAP,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -1328,6 +1430,53 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.greyBorder,
+  },
+  lotteryHomeCardWrap: {
+    width: OFFER_CARD_WIDTH,
+    marginRight: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  lotteryHomeImage: {
+    width: '100%',
+    height: 88,
+    backgroundColor: colors.greyLight,
+  },
+  lotteryHomeImagePlaceholder: {
+    width: '100%',
+    height: 88,
+    backgroundColor: colors.greyLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lotteryHomeBody: {
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  lotteryHomeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  lotteryHomePts: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  lotteryHomeRest: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  lotteryHomeCountdown: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
   offreCardImage: {
     width: '100%',
@@ -1824,5 +1973,102 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.white,
+  },
+  // Bloc Jackpot — compact, tape à l'œil, dégradé doré
+  jackpotBlock: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  jackpotCard: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg - 6,
+    paddingBottom: spacing.sm - 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    shadowColor: '#ffd700',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 10,
+    position: 'relative',
+  },
+  jackpotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    position: 'relative',
+    zIndex: 1,
+  },
+  jackpotLeft: {
+    flex: 1,
+  },
+  jackpotTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  jackpotLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.black,
+    letterSpacing: 1.2,
+  },
+  jackpotAmount: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: colors.black,
+    letterSpacing: -1,
+    textShadowColor: 'rgba(255,255,255,0.9)',
+    textShadowOffset: { width: 0, height: -1 },
+    textShadowRadius: 1,
+  },
+  jackpotRight: {
+    alignItems: 'flex-start',
+    width: 140,
+  },
+  jackpotProgressMini: {
+    marginBottom: 35,
+    width: '100%',
+  },
+  jackpotProgressLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.black,
+    marginBottom: 2,
+  },
+  jackpotProgressValue: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.black,
+    marginBottom: 2,
+  },
+  jackpotProgressBarBg: {
+    width: '100%',
+    minWidth: 120,
+    height: 6,
+    backgroundColor: 'rgba(4,120,87,0.25)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  jackpotProgressBarFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+  jackpotCtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 10,
+  },
+  jackpotCtaText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.black,
+    letterSpacing: 0.5,
   },
 });

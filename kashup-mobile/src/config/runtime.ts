@@ -106,6 +106,24 @@ export const apiOrigin = _apiOrigin;
  */
 export const apiBaseUrl = _apiBaseUrl;
 
+/** URL de prod pour le proxy Blob (affichage des images en dev local) */
+export const BLOB_PROXY_PRODUCTION_BASE = `${DEFAULT_PRODUCTION_API}/api/v1`;
+
+/**
+ * Base URL à utiliser pour le proxy d'images Blob.
+ * En dev avec API locale (IP / localhost), on utilise la prod pour que les images s'affichent
+ * même si l'API locale n'a pas BLOB_READ_WRITE_TOKEN ou n'est pas lancée.
+ */
+export function getBlobProxyBaseUrl(): string {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    const o = _apiOrigin.toLowerCase();
+    if (o.includes('localhost') || o.includes('127.0.0.1') || o.includes('192.168.')) {
+      return BLOB_PROXY_PRODUCTION_BASE;
+    }
+  }
+  return _apiBaseUrl;
+}
+
 // Log au démarrage
 if (__DEV__) {
   console.log(`[runtime] ✅ Configuration API chargée`);

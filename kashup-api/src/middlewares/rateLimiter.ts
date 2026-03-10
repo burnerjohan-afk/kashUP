@@ -45,8 +45,12 @@ export const apiRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Ne pas bloquer les requêtes de santé
-  skip: (req) => req.path === '/health' || req.path === '/api/v1/health'
+  // Ne pas bloquer : santé, ni GET /blob (chargement de nombreuses images en parallèle)
+  skip: (req) => {
+    const p = (req.path || '').toLowerCase();
+    const u = (req.originalUrl || req.url || '').split('?')[0].toLowerCase();
+    return p === '/health' || p === '/api/v1/health' || p === '/blob' || u.endsWith('/blob');
+  }
 });
 
 /**

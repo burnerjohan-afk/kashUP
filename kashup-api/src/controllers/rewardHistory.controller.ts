@@ -1,8 +1,23 @@
 import { Request, Response } from 'express';
-import { joinLottery, listChallenges, listLotteries, listRewardHistory } from '../services/rewardHistory.service';
+import { getChallengeCategory, listChallengeCategories, listChallenges, listRewardHistory } from '../services/rewardHistory.service';
+import { getActiveLotteries, getLotteryById, enterLottery, getActiveLotteriesForHome, getActiveLotteriesForRewards } from '../services/lotteryEngine';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
+
+/** Corrige /upload/ en /uploads/ (typo). Même schéma que offres et Box UP : on renvoie un chemin relatif, l'app construit l'URL avec apiOrigin + path. */
+function normalizeLotteryImagePath<T extends { imageUrl?: string | null }>(lottery: T): T {
+  const raw = lottery.imageUrl;
+  if (!raw || typeof raw !== 'string' || (raw as string).trim() === '') {
+    return lottery;
+  }
+  const url = (raw as string).trim();
+  const fixed = url.replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
+  if (fixed === url) return lottery;
+  return { ...lottery, imageUrl: fixed };
+}
+
+type ChallengeRaw = Awaited<ReturnType<typeof listChallenges>>[number];
 
 export const getRewardHistory = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
@@ -12,22 +27,91 @@ export const getRewardHistory = asyncHandler(async (req: Request, res: Response)
   sendSuccess(res, history);
 });
 
-export const getLotteries = asyncHandler(async (_req: Request, res: Response) => {
-  const lotteries = await listLotteries();
-  sendSuccess(res, lotteries);
+export const getLotteries = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const lotteries = await getActiveLotteriesForRewards(userId);
+  const data = lotteries.map((l) => normalizeLotteryImagePath(l));
+  sendSuccess(res, data);
+});
+
+export const getLotteriesForHome = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const lotteries = await getActiveLotteriesForHome(userId);
+  const data = lotteries.map((l) => normalizeLotteryImagePath(l));
+  sendSuccess(res, data);
+});
+
+export const getLotteryByIdHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const lottery = await getLotteryById(req.params.id, userId);
+  sendSuccess(res, normalizeLotteryImagePath(lottery));
 });
 
 export const joinLotteryHandler = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     throw new AppError('Authentification requise', 401);
   }
-  const entry = await joinLottery(req.user.sub, req.params.id, Number(req.body.tickets ?? 1));
-  sendSuccess(res, entry, null, 201);
+  const ticketCount = Number(req.body.tickets ?? req.body.ticketCount ?? 1);
+  const lottery = await enterLottery(req.user.sub, req.params.id, ticketCount);
+  sendSuccess(res, lottery, null, 200);
 });
 
-export const getChallenges = asyncHandler(async (_req: Request, res: Response) => {
-  const challenges = await listChallenges();
-  sendSuccess(res, challenges);
+function formatChallengeForApp(raw: ChallengeRaw) {
+  const progression = raw.progressions?.[0];
+  const progress = progression?.progress ?? 0;
+  const completedAt = progression?.completedAt ?? null;
+  const goalValue = raw.goalValue;
+  const percentage = goalValue > 0 ? Math.min(100, Math.round((progress / goalValue) * 100)) : 0;
+  const rewardSummary = raw.reward
+    ? `${raw.reward.rewardValue} ${raw.reward.rewardType === 'cashback' ? '€' : raw.reward.rewardType === 'points' ? 'pts' : raw.reward.rewardType}`
+    : raw.rewardPoints > 0
+      ? `${raw.rewardPoints} pts`
+      : 'Récompense';
+  const category = getChallengeCategory(raw);
+
+  return {
+    id: raw.id,
+    title: raw.title,
+    description: raw.description ?? '',
+    category,
+    type: raw.type,
+    goalType: raw.goalType,
+    goalValue: raw.goalValue,
+    goal: goalValue,
+    current: progress,
+    progress,
+    percentage,
+    reward: raw.reward
+      ? { rewardId: raw.reward.id, rewardType: raw.reward.rewardType, rewardValue: raw.reward.rewardValue, rewardCurrency: raw.reward.rewardCurrency }
+      : null,
+    rewardSummary,
+    rewardPoints: raw.rewardPoints,
+    difficulty: raw.difficulty,
+    startAt: raw.startAt,
+    endAt: raw.endAt,
+    status: raw.status,
+    userStatus: completedAt ? ('done' as const) : ('active' as const),
+    completedAt,
+    partnerId: raw.partnerId,
+    partner: raw.partner,
+    steps: [], // optionnel pour affichage étapes
+  };
+}
+
+export const getChallenges = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const category = typeof req.query.category === 'string' ? req.query.category : undefined;
+  const challenges = await listChallenges(userId, category);
+  const formatted = challenges.map(formatChallengeForApp);
+  sendSuccess(res, formatted);
+});
+
+export const getChallengeCategories = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.sub) {
+    throw new AppError('Authentification requise', 401);
+  }
+  const categories = await listChallengeCategories(req.user.sub);
+  sendSuccess(res, categories);
 });
 
 

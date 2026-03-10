@@ -24,6 +24,7 @@ import lotteriesRoutes from './lotteries.routes';
 import boxupsRoutes from './boxups.routes';
 import carteupsRoutes from './carteups.routes';
 import blobRoutes from './blob.routes';
+import jackpotRoutes from './jackpot.routes';
 
 const router = Router();
 
@@ -60,6 +61,7 @@ router.use('/monitoring', monitoringRoutes);
 router.use('/transactions', transactionRoutes);
 router.use('/stats', statsRoutes);
 router.use('/rewards', rewardRoutes);
+router.use('/community-jackpot', jackpotRoutes);
 
 export default router;
 

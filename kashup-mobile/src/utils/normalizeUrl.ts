@@ -5,19 +5,26 @@
  * - Si null => placeholder
  */
 
-import { apiOrigin, apiBaseUrl } from '../config/runtime';
+import { apiOrigin, getBlobProxyBaseUrl } from '../config/runtime';
 
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/400x300/F5F5F5/CCCCCC?text=Image+non+disponible';
 const BLOB_HOST = 'blob.vercel-storage.com';
 
 /**
  * Si l'URL pointe vers un Blob Vercel (store privé), retourne l'URL du proxy API.
+ * En dev local, utilise le proxy de prod pour que les images s'affichent sans token local.
  */
 function proxyBlobUrlIfNeeded(url: string): string {
   if (url.includes(BLOB_HOST)) {
-    return `${apiBaseUrl}/blob?url=${encodeURIComponent(url)}`;
+    const base = getBlobProxyBaseUrl();
+    return `${base}/blob?url=${encodeURIComponent(url)}`;
   }
   return url;
+}
+
+/** Corrige /upload/ en /uploads/ (chemin servi par l'API). */
+function fixUploadPath(url: string): string {
+  return url.replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
 }
 
 /**
@@ -31,7 +38,8 @@ export function normalizeImageUrl(imagePath: string | null | undefined): string 
     return PLACEHOLDER_IMAGE;
   }
 
-  const trimmed = imagePath.trim();
+  let trimmed = imagePath.trim();
+  trimmed = fixUploadPath(trimmed);
 
   // Si déjà une URL complète (http/https) : utiliser le proxy pour les Blob privés
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -40,7 +48,6 @@ export function normalizeImageUrl(imagePath: string | null | undefined): string 
 
   // Si commence par "/uploads/" ou "/", construire l'URL complète
   if (trimmed.startsWith('/uploads/') || trimmed.startsWith('/')) {
-    // Enlever le slash initial si présent pour éviter les doubles slashes
     const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
     return `${apiOrigin}${cleanPath}`;
   }

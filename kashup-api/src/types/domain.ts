@@ -29,7 +29,7 @@ export type GiftCardType = (typeof GIFT_CARD_TYPES)[number];
 export const GIFT_CARD_STATUSES = ['actif', 'utilise', 'expire'] as const;
 export type GiftCardStatus = (typeof GIFT_CARD_STATUSES)[number];
 
-export const NOTIFICATION_CATEGORIES = ['cashback', 'points', 'boosts', 'lotteries', 'system', 'gifts', 'donations'] as const;
+export const NOTIFICATION_CATEGORIES = ['cashback', 'points', 'boosts', 'lotteries', 'system', 'gifts', 'donations', 'challenges'] as const;
 export const NOTIFICATION_CATEGORY = {
   cashback: 'cashback',
   points: 'points',

@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import type { ChallengeCategory, RewardChallenge } from '../../types/rewards';
 
 /**
  * Endpoints utilisés :
@@ -104,3 +105,11 @@ export const getBadgeCatalog = async (): Promise<BadgeCatalogEntry[]> => {
   return data;
 };
 
+export const getChallenges = async (category?: string): Promise<RewardChallenge[]> => {
+  const params = category ? { category } : undefined;
+  const { data } = await apiClient.get<RewardChallenge[]>('/rewards/challenges', { params });
+  return Array.isArray(data) ? data : [];
+};export const getChallengeCategories = async (): Promise<ChallengeCategory[]> => {
+  const { data } = await apiClient.get<ChallengeCategory[]>('/rewards/challenges/categories');
+  return Array.isArray(data) ? data : [];
+};

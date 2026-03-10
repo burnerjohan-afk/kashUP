@@ -41,7 +41,7 @@ export default function MainStack() {
       screenOptions={{
         header: (props) => <Header {...props} />,
       }}>
-      <Stack.Screen name="Tabs" component={BottomTabs} options={{ title: 'KashUP' }} />
+      <Stack.Screen name="Tabs" component={BottomTabs} options={{ headerShown: false }} />
       <Stack.Screen
         name="PartnerDetail"
         component={PartnerDetailScreen}

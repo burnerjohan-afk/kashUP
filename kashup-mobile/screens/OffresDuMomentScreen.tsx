@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
 import { useCurrentOffers } from '@/src/hooks/useCurrentOffers';
 import { useWallet } from '@/src/hooks/useWallet';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -26,8 +26,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type NavProp = NativeStackNavigationProp<PartnersStackParamList, 'OffresDuMoment'>;
 
-const CARD_IMAGE_HEIGHT = 140;
-const SCALE = 1.35;
+const CARD_IMAGE_HEIGHT = 100;
+const SCALE = 1;
+/** Marge bas pour défilement au-dessus du bandeau (tab bar) */
+const BOTTOM_TAB_AREA = 90;
 
 function formatOfferDate(iso: string) {
   try {
@@ -88,7 +90,10 @@ export default function OffresDuMomentScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_HEIGHT + spacing.md },
+          {
+            paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + spacing.md,
+            paddingBottom: Math.max(spacing.xl, insets.bottom + BOTTOM_TAB_AREA),
+          },
         ]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
@@ -156,7 +161,7 @@ export default function OffresDuMomentScreen() {
                         <View style={styles.cashbackItem}>
                           <Ionicons
                             name="pricetag"
-                            size={Math.round(11 * SCALE)}
+                            size={12}
                             color={hasCashback ? '#05A357' : colors.textSecondary}
                           />
                           <Text
@@ -221,7 +226,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: spacing.xl,
     paddingHorizontal: spacing.md,
   },
   pageTitle: {
@@ -263,8 +267,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardBody: {
-    padding: spacing.sm * SCALE,
-    paddingBottom: 4,
+    padding: spacing.md,
+    paddingBottom: spacing.sm,
   },
   cardContent: {
     flexGrow: 0,
@@ -355,21 +359,21 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   partnerLogo: {
-    width: Math.round(34 * 1.6),
-    height: Math.round(34 * 1.6),
+    width: 40,
+    height: 40,
     borderRadius: radius.sm,
     backgroundColor: colors.greyLight,
   },
   partnerLogoPlaceholder: {
-    width: Math.round(34 * 1.6),
-    height: Math.round(34 * 1.6),
+    width: 40,
+    height: 40,
     borderRadius: radius.sm,
     backgroundColor: colors.greyBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   partnerLogoPlaceholderText: {
-    fontSize: Math.round(9 * 1.6),
+    fontSize: 10,
     fontWeight: '700',
     color: colors.textSecondary,
   },

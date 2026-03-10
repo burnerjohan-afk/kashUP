@@ -1,5 +1,5 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,7 +18,23 @@ type Props = {
 export default function ChallengeDetailScreen({ route }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RewardsStackParamList>>();
   const { challenge } = route.params;
-  const progress = Math.min(100, Math.round((challenge.current / challenge.goal) * 100));
+  const goal = challenge.goal ?? challenge.goalValue ?? 1;
+  const progress = Math.min(100, Math.round((challenge.current / goal) * 100));
+  const isDone = challenge.userStatus === 'done';
+  const rewardLabel = challenge.rewardSummary ?? (challenge as { reward?: string }).reward ?? 'Récompense';
+  const points = challenge.rewardPoints ?? challenge.reward?.rewardValue ?? 0;
+
+  const completedScale = useRef(new Animated.Value(isDone ? 1 : 0)).current;
+  useEffect(() => {
+    if (isDone) {
+      Animated.spring(completedScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 6,
+        tension: 80,
+      }).start();
+    }
+  }, [isDone, completedScale]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -31,43 +47,54 @@ export default function ChallengeDetailScreen({ route }: Props) {
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={20} color={colors.textMain} />
           </TouchableOpacity>
-          <Text style={styles.toolbarTitle}>Challenge</Text>
+          <Text style={styles.toolbarTitle}>Défi</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <LinearGradient
-          colors={[colors.primaryBlue, colors.primaryPurple]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}>
-          <Text style={styles.heroLabel}>Challenge</Text>
+        <View style={styles.hero}>
+          <View style={[styles.heroCircle, isDone ? styles.heroCircleDone : styles.heroCircleLocked]}>
+            <Animated.View style={{ transform: [{ scale: completedScale }] }}>
+              <Ionicons
+                name={isDone ? 'checkmark-circle' : 'lock-closed'}
+                size={72}
+                color={isDone ? colors.primaryGreen : colors.textSecondary}
+              />
+            </Animated.View>
+          </View>
+          <Text style={[styles.heroBadgeStatus, !isDone && styles.heroBadgeStatusLocked]}>
+            {isDone ? 'Complété' : 'Badge bloqué'}
+          </Text>
           <Text style={styles.heroTitle}>{challenge.title}</Text>
-          <Text style={styles.heroReward}>{challenge.reward}</Text>
+          <View style={styles.heroPointsBlock}>
+            <Text style={styles.heroPointsLabel}>Points à gagner</Text>
+            <Text style={styles.heroPointsValue}>+{points} pts</Text>
+          </View>
           <View style={styles.heroProgress}>
             <View style={[styles.heroFill, { width: `${progress}%` }]} />
           </View>
           <Text style={styles.heroProgressLabel}>
-            {challenge.current}/{challenge.goal} actions
+            {challenge.current} / {goal} · {progress}%
           </Text>
-        </LinearGradient>
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Description</Text>
-          <Text style={styles.cardText}>{challenge.description}</Text>
+          <Text style={styles.cardText}>{challenge.description || 'Aucune description.'}</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Étapes à suivre</Text>
-          {challenge.steps.map((step, index) => (
-            <View key={step} style={styles.stepRow}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>{index + 1}</Text>
+        {challenge.steps && challenge.steps.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Étapes à suivre</Text>
+            {challenge.steps.map((step, index) => (
+              <View key={`${index}-${step}`} style={styles.stepRow}>
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.stepText}>{step}</Text>
               </View>
-              <Text style={styles.stepText}>{step}</Text>
-            </View>
-          ))}
-        </View>
-
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -104,39 +131,81 @@ const styles = StyleSheet.create({
     color: colors.textMain,
   },
   hero: {
+    backgroundColor: colors.white,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.lg,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  heroLabel: {
-    color: '#F5F5FF',
-    textTransform: 'uppercase',
+  heroCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  heroCircleDone: {
+    backgroundColor: colors.lightGreen ?? '#d1fae5',
+  },
+  heroCircleLocked: {
+    backgroundColor: colors.greyLight,
+  },
+  heroBadgeStatus: {
     fontSize: 12,
-    letterSpacing: 1,
+    fontWeight: '700',
+    color: colors.primaryGreen,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroBadgeStatusLocked: {
+    color: colors.textSecondary,
   },
   heroTitle: {
-    color: colors.white,
-    fontSize: 22,
+    color: colors.textMain,
+    fontSize: 20,
     fontWeight: '800',
+    textAlign: 'center',
   },
-  heroReward: {
-    color: '#F1F5FF',
-    fontSize: 16,
-    fontWeight: '600',
+  heroPointsBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  heroPointsLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  heroPointsValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.primaryPurple,
   },
   heroProgress: {
     height: 10,
-    backgroundColor: '#FFFFFF33',
+    backgroundColor: colors.greyLight,
     borderRadius: radius.pill,
     overflow: 'hidden',
+    width: '100%',
+    marginTop: spacing.sm,
   },
   heroFill: {
     height: '100%',
-    backgroundColor: colors.white,
+    backgroundColor: colors.primaryPurple,
+    borderRadius: radius.pill,
   },
   heroProgressLabel: {
-    color: '#F1F5FF',
+    color: colors.textSecondary,
     fontWeight: '600',
+    fontSize: 13,
+    marginTop: spacing.xs,
   },
   card: {
     backgroundColor: colors.white,

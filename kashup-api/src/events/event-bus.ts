@@ -3,11 +3,19 @@ import EventEmitter from 'events';
 export type NotificationEvent =
   | {
       type: 'transaction_created';
-      payload: { userId: string; transactionId: string; amount: number };
+      payload: { userId: string; transactionId: string; amount: number; partnerId: string; cashbackEarned?: number };
     }
   | {
     type: 'boost_purchased';
     payload: { userId: string; boostId: string };
+  }
+  | {
+    type: 'lottery_joined';
+    payload: { userId: string; lotteryId: string; ticketCount: number; pointsSpent: number };
+  }
+  | {
+    type: 'lottery_winner';
+    payload: { userId: string; lotteryId: string };
   }
   | {
     type: 'drimify_experience_result';
@@ -16,6 +24,14 @@ export type NotificationEvent =
   | {
     type: 'powens_connection_sync';
     payload: { userId: string; connectionId: string; status: string };
+  }
+  | {
+    type: 'jackpot_winner';
+    payload: { userId: string; jackpotId: string; winningAmount: number };
+  }
+  | {
+    type: 'challenge_completed';
+    payload: { userId: string; challengeId: string; challengeProgressId?: string };
   };
 
 class NotificationBus extends EventEmitter {

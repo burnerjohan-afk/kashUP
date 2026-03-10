@@ -3,6 +3,7 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
+  Image,
   ImageBackground,
   Linking,
   RefreshControl,
@@ -18,15 +19,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
 import { colors, radius, spacing } from '../constants/theme';
 import { RewardsStackParamList } from '../navigation/RewardsStack';
 import { RewardBadge, RewardChallenge, RewardLottery } from '../types/rewards';
 import { useNotifications } from '../context/NotificationsContext';
 import { DrimifyGame, fetchDrimifyGames } from '../services/drimify';
 import { useRewards } from '@/src/hooks/useRewards';
+import { useLotteries } from '@/src/hooks/useLotteries';
+import LotteryCountdown from '@/src/components/LotteryCountdown';
 import { useWallet } from '@/src/hooks/useWallet';
 import { useWebhookEvents } from '@/src/hooks/useWebhookEvents';
+import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 
 type BadgeItem = RewardBadge;
 type RewardTab = 'history' | 'lotteries' | 'challenges' | 'boosts' | 'badges' | 'games';
@@ -49,7 +53,13 @@ const formatPointsValue = (points: number) => points.toLocaleString('fr-FR');
 const REWARDS_CARD_GRADIENT = ['#034d35', '#047857', '#059669', '#047857', '#065f46'] as const;
 const REWARDS_CARD_GRADIENT_LOCATIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 
+/** Fond crème pour la carte boost (boutique) */
+const BOOST_CARD_CREAM = '#FFF8E7';
+
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
+/** Marge bas pour défilement au-dessus du bandeau (tab bar) */
+const BOTTOM_TAB_AREA = 90;
 
 export default function RewardsScreen() {
   const [activeTab, setActiveTab] = useState<RewardTab>('history');
@@ -84,6 +94,7 @@ export default function RewardsScreen() {
     boostPurchaseInFlight,
   } = useRewards();
   const { data: walletData } = useWallet();
+  const { lotteries, loading: lotteriesLoading, refetch: refetchLotteries } = useLotteries();
   const cashback = walletData?.wallet?.soldeCashback ?? null;
 
   // Écouter les événements webhook pour rafraîchir automatiquement les récompenses
@@ -217,29 +228,94 @@ export default function RewardsScreen() {
   );
 
   const renderLotteries = () => (
-    <View style={styles.section}>
+    <View style={styles.sectionLotteries}>
       <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Loteries KashUP</Text>
-        <TouchableOpacity onPress={refetchRewards} disabled={rewardsLoading}>
-          <Text style={[styles.sectionLink, rewardsLoading && styles.sectionLinkDisabled]}>
-            {rewardsLoading ? 'Chargement…' : 'Actualiser'}
+        <Text style={styles.sectionTitle}>Loteries</Text>
+        <TouchableOpacity onPress={() => { refetchRewards(); refetchLotteries(); }} disabled={rewardsLoading || lotteriesLoading}>
+          <Text style={[styles.sectionLink, (rewardsLoading || lotteriesLoading) && styles.sectionLinkDisabled]}>
+            {(rewardsLoading || lotteriesLoading) ? 'Chargement…' : 'Actualiser'}
           </Text>
         </TouchableOpacity>
       </View>
-      {rewardsLoading ? (
-        <ActivityIndicator color={colors.primaryPurple} />
+      {(rewardsLoading || lotteriesLoading) ? (
+        <ActivityIndicator color={colors.textSecondary} />
+      ) : lotteries.length === 0 ? (
+        <Text style={styles.placeholderText}>Aucune loterie active. Revenez bientôt !</Text>
       ) : (
-        <Text style={styles.placeholderText}>
-          Les loteries publiées par KashUP seront listées ici dès que l’API back office exposera le catalogue.
-        </Text>
+        <View style={styles.cardList}>
+          {lotteries.map((lottery) => (
+            <View key={lottery.id} style={styles.lotteryEncart}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => navigation.navigate('LotteryDetail', { lotteryId: lottery.id, lottery })}
+                style={styles.lotteryCardWrap}
+              >
+              {lottery.imageUrl ? (
+                <Image
+                  source={{ uri: normalizeImageUrl(lottery.imageUrl) }}
+                  style={styles.lotteryCardImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.lotteryCardImagePlaceholder}>
+                  <Ionicons name="ticket-outline" size={40} color={colors.greyInactive} />
+                </View>
+              )}
+              <View style={styles.lotteryCardContent}>
+                <Text style={styles.lotteryTitle} numberOfLines={2}>{lottery.title}</Text>
+                <Text style={styles.lotteryPrize} numberOfLines={1}>
+                  {lottery.prizeTitle ?? lottery.prizeDescription ?? 'Lot à gagner'}
+                </Text>
+                <View style={styles.lotteryMeta}>
+                  <View style={styles.lotteryMetaPill}>
+                    <Text style={styles.lotteryMetaPillText}>{lottery.pointsPerTicket ?? 100} pts / ticket</Text>
+                  </View>
+                  {lottery.isTicketStockLimited && lottery.ticketsRemaining != null && (
+                    <Text style={styles.lotteryMetaRest}>
+                      {lottery.ticketsRemaining <= 0 ? 'Épuisé' : `${lottery.ticketsRemaining} restants`}
+                    </Text>
+                  )}
+                </View>
+                {lottery.drawDate && (
+                  <View style={styles.lotteryCountdownRow}>
+                    <LotteryCountdown drawDate={lottery.drawDate} textStyle={styles.lotteryCountdown} />
+                  </View>
+                )}
+                {lottery.userTicketCount != null && lottery.userTicketCount > 0 && (
+                  <Text style={styles.lotteryUserTickets}>Vos tickets : {lottery.userTicketCount}</Text>
+                )}
+                <View style={styles.lotteryCardCta}>
+                  <Text style={styles.lotteryCardCtaText}>Voir la loterie</Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+                </View>
+              </View>
+            </TouchableOpacity>
+            </View>
+          ))}
+        </View>
       )}
     </View>
   );
 
+  const challengesList = rewardsData.challenges ?? [];
+  const categoriesList = rewardsData.challengeCategories ?? [];
+  const totalPointsFromCategories = categoriesList.reduce((sum, c) => sum + c.pointsEarned, 0);
+
+  const getCategoryIcon = (cat: string) => {
+    switch (cat) {
+      case 'consentements': return 'document-text-outline';
+      case 'parrainages': return 'people-outline';
+      case 'cagnotte': return 'wallet-outline';
+      case 'connexion': return 'link-outline';
+      case 'ma_fid': return 'heart-outline';
+      default: return 'flash-outline';
+    }
+  };
+
   const renderChallenges = () => (
     <View style={styles.section}>
       <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Challenges KashUP</Text>
+        <Text style={styles.sectionTitle}>Badges & points</Text>
         <TouchableOpacity onPress={refetchRewards} disabled={rewardsLoading}>
           <Text style={[styles.sectionLink, rewardsLoading && styles.sectionLinkDisabled]}>
             {rewardsLoading ? 'Synchronisation…' : 'Actualiser'}
@@ -248,10 +324,71 @@ export default function RewardsScreen() {
       </View>
       {rewardsLoading ? (
         <ActivityIndicator color={colors.primaryPurple} />
-      ) : (
+      ) : categoriesList.length > 0 ? (
+        <>
+          <View style={styles.badgesPointsRow}>
+            <Text style={styles.badgesPointsLabel}>Points gagnés (défis)</Text>
+            <Text style={styles.badgesPointsValue}>{formatPointsValue(totalPointsFromCategories)}</Text>
+          </View>
+          <View style={styles.categoryList}>
+            {categoriesList.map((cat) => (
+              <TouchableOpacity
+                key={cat.category}
+                style={styles.categoryRow}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ChallengeCategory', { category: cat.category, label: cat.label })}>
+                <View style={styles.categoryIconWrap}>
+                  <Ionicons name={getCategoryIcon(cat.category) as any} size={22} color={colors.primaryPurple} />
+                </View>
+                <View style={styles.categoryContent}>
+                  <Text style={styles.categoryLabel}>{cat.label}</Text>
+                  <Text style={styles.categoryProgress}>
+                    {cat.completedCount} / {cat.totalCount}
+                  </Text>
+                </View>
+                <Text style={styles.categoryPoints}>+{cat.pointsEarned} pts</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      ) : challengesList.length === 0 ? (
         <Text style={styles.placeholderText}>
-          Les défis officiels seront affichés dès que le backend KashUP exposera les campagnes challenges.
+          Connecte-toi pour voir tes défis et gagner des points. Aucun challenge actif pour le moment.
         </Text>
+      ) : (
+        <View style={styles.challengesList}>
+          {challengesList.map((challenge) => {
+            const isDone = challenge.userStatus === 'done';
+            const pct = challenge.percentage ?? (challenge.goalValue > 0 ? Math.min(100, Math.round((challenge.current / challenge.goalValue) * 100)) : 0);
+            return (
+              <TouchableOpacity
+                key={challenge.id}
+                style={[styles.challengeCard, isDone && styles.challengeCardDone]}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ChallengeDetail', { challenge })}>
+                <View style={styles.challengeCardHeader}>
+                  <Text style={styles.challengeTitle} numberOfLines={2}>{challenge.title}</Text>
+                  {isDone && (
+                    <View style={styles.challengeBadgeDone}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.white} />
+                      <Text style={styles.challengeBadgeDoneText}>Complété</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                </View>
+                <View style={styles.challengeMeta}>
+                  <Text style={styles.challengeStatus}>
+                    {challenge.current} / {challenge.goalValue} · {pct}%
+                  </Text>
+                  <Text style={styles.challengeReward}>{challenge.rewardSummary}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       )}
     </View>
   );
@@ -305,12 +442,8 @@ export default function RewardsScreen() {
             <Text style={styles.placeholderText}>La boutique de boosts arrive bientôt.</Text>
           ) : (
             availableBoosts.map((boost) => (
-              <LinearGradient
+              <View
                 key={boost.id}
-                colors={[...REWARDS_CARD_GRADIENT]}
-                locations={[...REWARDS_CARD_GRADIENT_LOCATIONS]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
                 style={[
                   styles.boostShopCard,
                   focusedBoostId === boost.id && styles.boostShopCardFocused,
@@ -336,7 +469,7 @@ export default function RewardsScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </LinearGradient>
+              </View>
             ))
           )}
           {boostPurchaseError && <Text style={styles.errorText}>{boostPurchaseError}</Text>}
@@ -346,46 +479,47 @@ export default function RewardsScreen() {
   );
 
   const renderBadges = () => (
-    <View style={styles.section}>
+    <View style={styles.sectionLotteries}>
       <Text style={styles.sectionTitle}>Mes badges</Text>
       {badgeEntries.length === 0 ? (
         <Text style={styles.placeholderText}>Aucun badge disponible pour le moment.</Text>
       ) : (
-        <View style={styles.badgeGrid}>
+        <View style={styles.cardList}>
           {badgeEntries.map((badge) => (
-            <TouchableOpacity
-              key={badge.id}
-              activeOpacity={0.9}
-              onPress={() => navigation.navigate('BadgeDetail', { badge })}>
-              <LinearGradient
-                colors={badge.unlocked ? [...REWARDS_CARD_GRADIENT] : ['#F3F4F6', '#E2E8F0']}
-                locations={badge.unlocked ? [...REWARDS_CARD_GRADIENT_LOCATIONS] : undefined}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.badgeItem, !badge.unlocked && styles.badgeItemLocked]}>
-                <View style={styles.badgeTopRow}>
-                  <View style={[styles.badgeEmojiBubble, !badge.unlocked && styles.badgeEmojiBubbleLocked]}>
-                    <Text style={styles.badgeEmoji}>{badge.emoji}</Text>
+            <View key={badge.id} style={styles.lotteryEncart}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => navigation.navigate('BadgeDetail', { badge })}
+                style={styles.badgeCardWrap}>
+                <View style={styles.badgeCardContent}>
+                  <View style={styles.badgeTopRow}>
+                    <View style={[styles.badgeEmojiBubble, !badge.unlocked && styles.badgeEmojiBubbleLocked]}>
+                      <Text style={styles.badgeEmoji}>{badge.emoji}</Text>
+                    </View>
+                    <View style={[styles.badgeStatusPill, badge.unlocked && styles.badgeStatusPillUnlocked]}>
+                      <Text style={[styles.badgeStatusText, badge.unlocked && styles.badgeStatusTextUnlocked]}>
+                        {badge.unlocked ? 'Débloqué' : 'En cours'}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.badgeStatus, !badge.unlocked && styles.badgeStatusLocked]}>
-                    {badge.unlocked ? 'Débloqué' : 'En cours'}
-                  </Text>
+                  <Text style={styles.badgeLabel}>{badge.label}</Text>
+                  <View style={styles.badgeProgressBar}>
+                    <View
+                      style={[
+                        styles.badgeProgressFill,
+                        { width: `${badge.progress}%` },
+                        badge.unlocked && styles.badgeProgressFillUnlocked,
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.badgeProgressText}>{badge.progress}% • {badge.description}</Text>
                 </View>
-                <Text style={[styles.badgeLabel, !badge.unlocked && styles.badgeLabelLocked]}>{badge.label}</Text>
-                <View style={styles.badgeProgressBar}>
-                  <View
-                    style={[
-                      styles.badgeProgressFill,
-                      { width: `${badge.progress}%` },
-                      !badge.unlocked && styles.badgeProgressFillLocked,
-                    ]}
-                  />
+                <View style={styles.badgeCardCta}>
+                  <Text style={styles.badgeCardCtaText}>Voir le badge</Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.primary} />
                 </View>
-                <Text style={[styles.badgeProgressText, !badge.unlocked && styles.badgeStatusLocked]}>
-                  {badge.progress}% • {badge.description}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           ))}
         </View>
       )}
@@ -530,7 +664,10 @@ export default function RewardsScreen() {
         style={styles.scrollFill}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_HEIGHT + 15 },
+          {
+            paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15,
+            paddingBottom: Math.max(spacing.xl, insets.bottom + BOTTOM_TAB_AREA),
+          },
         ]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
@@ -715,6 +852,11 @@ const styles = StyleSheet.create({
     elevation: 2,
     gap: spacing.md,
   },
+  /** Section loteries sans fond : seul chaque encart a son fond blanc */
+  sectionLotteries: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: 0,
+  },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -788,19 +930,97 @@ const styles = StyleSheet.create({
   pointsNegative: {
     color: '#F87171',
   },
-  lotteryCard: {
+  lotteryEncart: {
+    marginBottom: spacing.lg,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+    backgroundColor: colors.white,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  lotteryCardWrap: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  lotteryCardImage: {
+    width: '100%',
+    height: 140,
+    backgroundColor: colors.greyLight,
+  },
+  lotteryCardImagePlaceholder: {
+    width: '100%',
+    height: 140,
+    backgroundColor: colors.greyLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lotteryCardContent: {
     padding: spacing.lg,
     gap: spacing.sm,
   },
   lotteryTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.textMain,
   },
-  lotteryDescription: {
+  lotteryPrize: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  lotteryMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  lotteryMetaPill: {
+    backgroundColor: colors.slateBackground,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+  },
+  lotteryMetaPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMain,
+  },
+  lotteryMetaRest: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  lotteryCountdownRow: {
+    marginTop: spacing.xs,
+  },
+  lotteryCountdown: {
     fontSize: 13,
-    color: '#F4F4FF',
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  lotteryUserTickets: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  lotteryCardCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.greyBorder,
+  },
+  lotteryCardCtaText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginRight: spacing.xs,
   },
   lotteryTickets: {
     fontSize: 13,
@@ -881,11 +1101,97 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: spacing.xs / 2,
   },
+  badgesPointsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.greyLight,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  badgesPointsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMain,
+  },
+  badgesPointsValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.primaryPurple,
+  },
+  categoryList: {
+    gap: 0,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    gap: spacing.sm,
+  },
+  categoryIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.lightPurple ?? '#d1fae5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryContent: {
+    flex: 1,
+  },
+  categoryLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  categoryProgress: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  categoryPoints: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primaryPurple,
+  },
+  challengesList: {
+    gap: spacing.md,
+  },
   challengeCard: {
     borderRadius: radius.md,
     backgroundColor: colors.greyLight,
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  challengeCardDone: {
+    borderWidth: 1,
+    borderColor: colors.primaryGreen ?? '#059669',
+    backgroundColor: '#ECFDF5',
+  },
+  challengeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  challengeBadgeDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primaryGreen ?? '#059669',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  challengeBadgeDoneText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
   },
   challengeTitle: {
     fontSize: 16,
@@ -986,6 +1292,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     gap: spacing.sm,
+    backgroundColor: BOOST_CARD_CREAM,
   },
   boostShopCardFocused: {
     borderWidth: 2,
@@ -997,7 +1304,7 @@ const styles = StyleSheet.create({
   boostPrice: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.primary,
   },
   boostShopHeader: {
     flexDirection: 'row',
@@ -1008,17 +1315,17 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF22',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   boostShopTitle: {
-    color: colors.white,
+    color: colors.textMain,
     fontWeight: '700',
     fontSize: 16,
   },
   boostShopDescription: {
-    color: '#F2F2FF',
+    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -1028,13 +1335,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   boostShopDuration: {
-    color: '#E0E7FF',
+    color: colors.textSecondary,
     fontSize: 13,
   },
   boostShopButton: {
     borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
+    backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
@@ -1112,17 +1418,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  badgeGrid: {
-    flexDirection: 'column',
-    gap: spacing.md,
-  },
-  badgeItem: {
+  badgeCardWrap: {
+    backgroundColor: colors.white,
     borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  badgeCardContent: {
     padding: spacing.lg,
     gap: spacing.sm,
-  },
-  badgeItemLocked: {
-    opacity: 0.9,
   },
   badgeEmoji: {
     fontSize: 30,
@@ -1136,47 +1439,71 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: colors.slateBackground,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeEmojiBubbleLocked: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: colors.greyLight,
   },
-  badgeLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textMain,
+  badgeStatusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.greyLight,
   },
-  badgeLabelLocked: {
-    color: colors.textSecondary,
+  badgeStatusPillUnlocked: {
+    backgroundColor: 'rgba(4, 120, 87, 0.12)',
   },
-  badgeStatus: {
+  badgeStatusText: {
     fontSize: 11,
-    color: colors.primaryBlue,
+    fontWeight: '600',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  badgeStatusLocked: {
-    color: colors.textSecondary,
+  badgeStatusTextUnlocked: {
+    color: colors.primary,
+  },
+  badgeLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textMain,
   },
   badgeProgressBar: {
     height: 6,
     borderRadius: radius.pill,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: colors.greyLight,
     overflow: 'hidden',
   },
   badgeProgressFill: {
     height: '100%',
-    backgroundColor: colors.primaryBlue,
-  },
-  badgeProgressFillLocked: {
     backgroundColor: colors.textSecondary,
+    borderRadius: radius.pill,
+  },
+  badgeProgressFillUnlocked: {
+    backgroundColor: colors.primary,
   },
   badgeProgressText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.textSecondary,
+  },
+  badgeCardCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.greyBorder,
+  },
+  badgeCardCtaText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginRight: spacing.xs,
   },
   badgeHint: {
     textAlign: 'center',

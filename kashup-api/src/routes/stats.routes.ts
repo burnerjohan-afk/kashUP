@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { getImpactLocal } from '../controllers/stats.controller';
-import { authMiddleware, requireRoles } from '../middlewares/auth';
-import { USER_ROLE } from '../types/domain';
+import { optionalAuthMiddleware } from '../middlewares/auth';
 
 const router = Router();
 
-router.get('/impact-local', authMiddleware, requireRoles(USER_ROLE.admin), getImpactLocal);
+// Stats communautaires (volume, cashback, etc.) : accessibles à tous pour l’app mobile
+router.get('/impact-local', optionalAuthMiddleware, getImpactLocal);
 
 export default router;
 

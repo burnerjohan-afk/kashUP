@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import type { CagnotteStackParamList } from '../navigation/CagnotteStack';
 import { useWallet } from '@/src/hooks/useWallet';
-import { TabScreenHeader, TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
 import { useNotifications } from '../context/NotificationsContext';
 
 type WalletTab = 'Coffre-fort' | 'Don' | 'Bons d’achat';
@@ -113,7 +113,7 @@ export default function WalletScreen() {
       <AnimatedScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_HEIGHT + 12 },
+          { paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 12 },
         ]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
@@ -234,13 +234,13 @@ export default function WalletScreen() {
               <View style={styles.personalHighlightRow}>
                 <View style={styles.personalHighlightBlock}>
                   <Ionicons name="wallet-outline" size={18} color={colors.primary} style={styles.kpiIcon} />
-                  <Text style={styles.personalHighlightLabel} numberOfLines={1}>Injecté ce mois-ci</Text>
-                  <Text style={styles.personalHighlightValue} numberOfLines={1}>{formatCurrency(monthlyInjected)}</Text>
+                  <Text style={styles.personalHighlightLabel}>Injecté ce mois-ci</Text>
+                  <Text style={styles.personalHighlightValue}>{formatCurrency(monthlyInjected)}</Text>
                 </View>
                 <View style={styles.personalHighlightBlock}>
                   <Ionicons name="flag-outline" size={18} color={colors.primary} style={styles.kpiIcon} />
-                  <Text style={styles.personalHighlightLabel} numberOfLines={1}>Objectif KashUP</Text>
-                  <Text style={styles.personalHighlightValue} numberOfLines={1}>{formatCurrency(monthlyObjective)}</Text>
+                  <Text style={styles.personalHighlightLabel}>Objectif KashUP</Text>
+                  <Text style={styles.personalHighlightValue}>{formatCurrency(monthlyObjective)}</Text>
                 </View>
               </View>
 
@@ -261,22 +261,22 @@ export default function WalletScreen() {
                   <View style={styles.personalKpiIconWrap}>
                     <Ionicons name="storefront-outline" size={20} color={colors.primary} />
                   </View>
-                  <Text style={styles.personalKpiLabel} numberOfLines={1}>Commerces aidés</Text>
-                  <Text style={styles.personalKpiValue} numberOfLines={1}>{personalImpact.merchantsHelped}</Text>
+                  <Text style={styles.personalKpiLabel}>Commerces aidés</Text>
+                  <Text style={styles.personalKpiValue}>{personalImpact.merchantsHelped}</Text>
                 </View>
                 <View style={styles.personalKpi}>
                   <View style={styles.personalKpiIconWrap}>
                     <Ionicons name="cart-outline" size={20} color={colors.primary} />
                   </View>
-                  <Text style={styles.personalKpiLabel} numberOfLines={1}>Achats locaux</Text>
-                  <Text style={styles.personalKpiValue} numberOfLines={1}>{personalImpact.purchasesCount}</Text>
+                  <Text style={styles.personalKpiLabel}>Achats locaux</Text>
+                  <Text style={styles.personalKpiValue}>{personalImpact.purchasesCount}</Text>
                 </View>
                 <View style={styles.personalKpi}>
                   <View style={styles.personalKpiIconWrap}>
                     <Ionicons name="flash-outline" size={20} color={colors.primary} />
                   </View>
-                  <Text style={styles.personalKpiLabel} numberOfLines={1}>Cashback boosté</Text>
-                  <Text style={styles.personalKpiValue} numberOfLines={1}>
+                  <Text style={styles.personalKpiLabel}>Cashback boosté</Text>
+                  <Text style={styles.personalKpiValue}>
                     {personalImpact.boostRate > 0 ? `+${personalImpact.boostRate.toFixed(1)} %` : '--'}
                   </Text>
                 </View>
@@ -311,15 +311,15 @@ export default function WalletScreen() {
               <View style={styles.kashupHighlightRow}>
                 <View style={styles.kashupHighlightBlock}>
                   <Ionicons name="calendar-outline" size={20} color={colors.primary} style={styles.kashupBlockIcon} />
-                  <Text style={styles.kashupStatLabel} numberOfLines={1}>Ce mois-ci</Text>
-                  <Text style={styles.kashupHighlightValue} numberOfLines={1}>
+                  <Text style={styles.kashupStatLabel}>Ce mois-ci</Text>
+                  <Text style={styles.kashupHighlightValue}>
                     {communityImpact ? formatCurrency(communityImpact.cashbackDistribue) : '--'}
                   </Text>
                 </View>
                 <View style={styles.kashupHighlightBlock}>
                   <Ionicons name="stats-chart-outline" size={20} color={colors.primary} style={styles.kashupBlockIcon} />
-                  <Text style={styles.kashupStatLabel} numberOfLines={1}>Cette année</Text>
-                  <Text style={styles.kashupHighlightValue} numberOfLines={1}>
+                  <Text style={styles.kashupStatLabel}>Cette année</Text>
+                  <Text style={styles.kashupHighlightValue}>
                     {communityImpact ? formatCurrency(communityImpact.volumeAchat) : '--'}
                   </Text>
                 </View>
@@ -327,8 +327,8 @@ export default function WalletScreen() {
               <View style={styles.kashupStatGrid}>
                 <View style={styles.kashupStatBlock}>
                   <View style={styles.kashupStatTextWrap}>
-                    <Text style={styles.kashupStatLabel} numberOfLines={1} ellipsizeMode="tail">Commerces aidés</Text>
-                    <Text style={styles.kashupStatValue} numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={styles.kashupStatLabel}>Commerces aidés</Text>
+                    <Text style={styles.kashupStatValue}>
                       {communityImpact ? String(communityImpact.partenairesActifs) : '--'}
                     </Text>
                   </View>
@@ -338,8 +338,8 @@ export default function WalletScreen() {
                 </View>
                 <View style={styles.kashupStatBlock}>
                   <View style={styles.kashupStatTextWrap}>
-                    <Text style={styles.kashupStatLabel} numberOfLines={1} ellipsizeMode="tail">Transactions</Text>
-                    <Text style={styles.kashupStatValue} numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={styles.kashupStatLabel}>Transactions</Text>
+                    <Text style={styles.kashupStatValue}>
                       {communityImpact ? String(communityImpact.totalTransactions) : '--'}
                     </Text>
                   </View>
@@ -352,8 +352,8 @@ export default function WalletScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Historique de vos gains</Text>
+        <View style={styles.historiqueEncart}>
+          <Text style={styles.historiqueEncartTitle}>Historique de vos gains</Text>
           <View style={styles.transactionsWrapper}>
             {topTransactions.length === 0 ? (
               <Text style={styles.placeholderText}>Pas encore de transactions. Lancez un achat local !</Text>
@@ -584,6 +584,24 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
+  historiqueEncart: {
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    padding: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  historiqueEncartTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginBottom: spacing.md,
+  },
   sectionTitle: {
     fontSize: 22,
     fontWeight: '700',
@@ -660,12 +678,13 @@ const styles = StyleSheet.create({
   },
   personalHighlightRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
     marginBottom: spacing.md,
   },
   personalHighlightBlock: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 130,
     backgroundColor: 'rgba(5,163,87,0.08)',
     borderRadius: radius.md,
     padding: spacing.md,
@@ -713,11 +732,12 @@ const styles = StyleSheet.create({
   },
   personalKpiRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   personalKpi: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 95,
     backgroundColor: colors.white,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
@@ -740,6 +760,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   personalKpiValue: {
     fontSize: 15,
@@ -848,11 +869,12 @@ const styles = StyleSheet.create({
   },
   kashupStatGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
   },
   kashupStatBlock: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 120,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
@@ -862,12 +884,10 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.greyBorder,
-    overflow: 'hidden',
   },
   kashupStatTextWrap: {
     width: '100%',
     alignItems: 'center',
-    overflow: 'hidden',
   },
   kashupStatIconWrap: {
     width: 40,

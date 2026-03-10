@@ -22,7 +22,9 @@ const storage = multer.diskStorage({
     let type = 'general';
     let partnerId: string | undefined;
 
-    if (req.body?.type) {
+    if (pathForType.includes('reward') && req.body?.type) {
+      type = 'rewards';
+    } else if (req.body?.type) {
       type = req.body.type;
     } else if (pathForType.includes('partner')) {
       type = 'partners';
@@ -291,6 +293,22 @@ const wrapMulter = (multerMiddleware: any) => {
 
 // Middleware pour un seul fichier
 export const uploadSingle = (fieldName: string) => wrapMulter(upload.single(fieldName));
+
+/**
+ * Upload optionnel : ne lance Multer que pour multipart/form-data.
+ * Pour application/json, appelle next() sans toucher à req.body (déjà parsé par express.json()).
+ * Évite que le body JSON soit perdu ou écrasé sur les routes rewards/lottery/boost.
+ */
+export const uploadSingleOptional = (fieldName: string) => {
+  const single = wrapMulter(upload.single(fieldName));
+  return (req: any, res: any, next: any) => {
+    const contentType = (req.headers['content-type'] || '').toLowerCase();
+    if (contentType.includes('multipart/form-data')) {
+      return single(req, res, next);
+    }
+    next();
+  };
+};
 
 // Middleware pour upload document partenaire (champ 'file')
 export const uploadDocumentSingle = () => wrapMulter(uploadDocument.single('file'));

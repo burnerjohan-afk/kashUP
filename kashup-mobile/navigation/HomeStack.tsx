@@ -8,10 +8,12 @@ import DonationConfirmationScreen from '../screens/DonationConfirmationScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ProfileDetailScreen from '../screens/ProfileDetailScreen';
+import JackpotScreen from '../screens/JackpotScreen';
 import type { DonationAssociation, DonationCategory } from '@/src/services/donationService';
 
 export type HomeStackParamList = {
   HomeLanding: undefined;
+  Jackpot: undefined;
   Donations: undefined;
   DonationContribution: {
     association: DonationAssociation;
@@ -33,6 +35,7 @@ export default function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="HomeLanding" component={HomeScreen} />
+      <Stack.Screen name="Jackpot" component={JackpotScreen} />
       <Stack.Screen name="Donations" component={DonationsScreen} />
       <Stack.Screen name="DonationContribution" component={DonationContributionScreen} />
       <Stack.Screen name="DonationConfirmation" component={DonationConfirmationScreen} />

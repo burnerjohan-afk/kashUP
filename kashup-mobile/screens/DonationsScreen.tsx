@@ -1,23 +1,46 @@
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
+import { useDonationCategories } from '@/src/hooks/useDonationCategories';
+import { useDonationImpact } from '@/src/hooks/useDonationImpact';
+import { useWallet } from '@/src/hooks/useWallet';
+import { useNotifications } from '@/context/NotificationsContext';
 import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import type { NavigationProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeStack';
-import { useDonationCategories } from '@/src/hooks/useDonationCategories';
-import { useDonationImpact } from '@/src/hooks/useDonationImpact';
 import type { DonationAssociation, DonationCategory, DonationDepartment } from '@/src/services/donationService';
 
 type DonationsNav = NavigationProp<HomeStackParamList, 'Donations'>;
 
 const DEPARTMENTS: Array<'Tous' | DonationDepartment> = ['Tous', 'Martinique', 'Guadeloupe', 'Guyane'];
 
+/** Marge bas pour défilement au-dessus du bandeau (tab bar / safe area) */
+const BOTTOM_TAB_AREA = 90;
+
+const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
 export default function DonationsScreen() {
   const navigation = useNavigation<DonationsNav>();
+  const insets = useSafeAreaInsets();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const { data: walletData } = useWallet();
+  const { notifications } = useNotifications();
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const cashback = walletData?.wallet?.soldeCashback ?? null;
+  const points = walletData?.wallet?.soldePoints ?? null;
   const { categories, loading, error, refetch } = useDonationCategories();
   const {
     impact,
@@ -27,6 +50,15 @@ export default function DonationsScreen() {
   } = useDonationImpact();
   const [selectedDepartment, setSelectedDepartment] = useState<'Tous' | DonationDepartment>('Tous');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+
+  const handleNotificationPress = useCallback(() => {
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Notifications' });
+  }, [navigation]);
+  const handleProfilePress = useCallback(() => {
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Profile' });
+  }, [navigation]);
 
   const filteredCategories = useMemo(() => {
     return categories
@@ -78,14 +110,31 @@ export default function DonationsScreen() {
           <Text style={styles.errorBannerCta}>Actualiser</Text>
         </TouchableOpacity>
       )}
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.toolbar}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={colors.textMain} />
-          </TouchableOpacity>
-          <Text style={styles.toolbarTitle}>Soutenez une cause locale</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <TabScreenHeader
+        title="Don"
+        scrollY={scrollY}
+        onBackPress={() => navigation.goBack()}
+        onNotificationPress={handleNotificationPress}
+        onProfilePress={handleProfilePress}
+        unreadCount={unreadCount}
+        cashback={cashback ?? null}
+        points={points ?? null}
+        showPillsRow
+        solidBackground
+      />
+      <AnimatedScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15,
+            paddingBottom: Math.max(spacing.xl * 2, insets.bottom + BOTTOM_TAB_AREA),
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}>
         <Text style={styles.subtitle}>
           Choisissez une association partenaire et redistribuez votre cashback.
         </Text>
@@ -188,7 +237,7 @@ export default function DonationsScreen() {
             />
           ))
         )}
-      </ScrollView>
+      </AnimatedScrollView>
     </SafeAreaView>
   );
 }
@@ -278,28 +327,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    paddingBottom: spacing.xl * 2,
     gap: spacing.md,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-  },
-  toolbarTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.textMain,
   },
   subtitle: {
     fontSize: 14,

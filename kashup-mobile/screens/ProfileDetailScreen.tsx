@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useReferrals } from '@/src/hooks/useReferrals';
@@ -132,9 +132,12 @@ const supportChannels = [
 type ProfileDetailNav = NativeStackNavigationProp<HomeStackParamList>;
 type MainNav = NativeStackNavigationProp<MainStackParamList>;
 
+const BOTTOM_TAB_BAR_HEIGHT = 90;
+
 export default function ProfileDetailScreen() {
   const navigation = useNavigation<ProfileDetailNav>();
   const mainNavigation = useNavigation<MainNav>();
+  const insets = useSafeAreaInsets();
   const route = useRoute<ProfileDetailRoute>();
   const { sectionId } = route.params;
   const [powensLoading, setPowensLoading] = useState(false);
@@ -836,20 +839,22 @@ export default function ProfileDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <LinearGradient
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.toolbar}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={colors.textMain} />
-          </TouchableOpacity>
-          <Text style={styles.toolbarTitle}>{hero.title}</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
+      <View style={styles.bandeauBlanc}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={20} color={colors.textMain} />
+        </TouchableOpacity>
+        <Text style={styles.toolbarTitle}>{hero.title}</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + BOTTOM_TAB_BAR_HEIGHT }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.hero}>
           <Text style={styles.heroSubtitle}>{hero.subtitle}</Text>
         </View>
@@ -867,7 +872,22 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+    paddingTop: spacing.lg + 8,
     gap: spacing.md,
+  },
+  bandeauBlanc: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md + 4,
+    paddingBottom: spacing.md + 4,
+    minHeight: 56,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.greyBorder,
+    zIndex: 10,
+    elevation: 10,
   },
   toolbar: {
     flexDirection: 'row',

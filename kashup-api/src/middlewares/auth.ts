@@ -32,6 +32,28 @@ export const authMiddleware = (req: Request, _res: Response, next: NextFunction)
   }
 };
 
+/** Attache req.user si token valide, sans renvoyer 401 si absent (pour routes publiques avec contenu personnalisé). */
+export const optionalAuthMiddleware = (req: Request, _res: Response, next: NextFunction) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return next();
+  }
+  const token = header.substring('Bearer '.length);
+  try {
+    const payload = verifyToken(token);
+    req.user = {
+      sub: payload.sub,
+      email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      role: (payload.role as UserRole) ?? USER_ROLE.user,
+    };
+  } catch {
+    // Token invalide : on continue sans user
+  }
+  return next();
+};
+
 export const requireRoles = (...roles: UserRole[]) => {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) {

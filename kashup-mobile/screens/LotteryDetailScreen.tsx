@@ -1,6 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,8 +19,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { colors, radius, spacing } from '../constants/theme';
 import { RewardsStackParamList } from '../navigation/RewardsStack';
-import { RewardLottery } from '../types/rewards';
 import { useNotifications } from '../context/NotificationsContext';
+import LotteryCountdown from '@/src/components/LotteryCountdown';
+import { getLottery, joinLottery, type Lottery } from '@/src/services/lotteryService';
+import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
+import { useWallet } from '@/src/hooks/useWallet';
+import { useRewards } from '@/src/hooks/useRewards';
 
 type LotteryRoute = RouteProp<RewardsStackParamList, 'LotteryDetail'>;
 
@@ -19,34 +35,76 @@ type Props = {
 
 export default function LotteryDetailScreen({ route }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RewardsStackParamList>>();
-  const { lottery } = route.params;
+  const insets = useSafeAreaInsets();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const { lottery: initialLottery, lotteryId: paramLotteryId } = route.params;
+  const lotteryId = paramLotteryId ?? initialLottery?.id;
+  const { data: walletData } = useWallet();
+  const { data: rewardsData } = useRewards();
+  const cashback = walletData?.wallet?.soldeCashback ?? null;
+  const points = rewardsData?.summary?.points ?? 0;
+  const { notifications } = useNotifications();
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleNotificationPress = useCallback(() => {
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Notifications' });
+  }, [navigation]);
+  const handleProfilePress = useCallback(() => {
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Profile' });
+  }, [navigation]);
+
+  const adaptRewardLottery = (l: typeof initialLottery): Lottery | null => {
+    if (!l) return null;
+    return {
+      id: l.id,
+      title: l.title,
+      description: l.description ?? '',
+      imageUrl: l.imageUrl ?? undefined,
+      pointsPerTicket: l.pointsPerTicket ?? 100,
+      isTicketStockLimited: l.isTicketStockLimited,
+      ticketsRemaining: l.ticketsRemaining ?? null,
+      userTicketCount: l.userTicketCount ?? 0,
+      startAt: '',
+      endAt: '',
+      drawDate: l.drawDate ?? '',
+      status: l.status ?? 'active',
+      countdown: l.countdown,
+    };
+  };
+
+  const [lottery, setLottery] = useState<Lottery | null>(() =>
+    initialLottery ? adaptRewardLottery(initialLottery) : null
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [imageLoadError, setImageLoadError] = useState(false);
   const [ticketsToBuy, setTicketsToBuy] = useState('1');
-  const [countdown, setCountdown] = useState<string>('');
-  const POINTS_PER_TICKET = 50;
+  const [joining, setJoining] = useState(false);
   const { addNotification } = useNotifications();
 
-  const drawDate = useMemo(() => {
-    const base = new Date();
-    base.setDate(base.getDate() + 3);
-    return base;
-  }, []);
+  const fetchLottery = useCallback(async () => {
+    if (!lotteryId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getLottery(lotteryId);
+      setLottery(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Loterie introuvable');
+    } finally {
+      setLoading(false);
+    }
+  }, [lotteryId]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = drawDate.getTime() - Date.now();
-      if (diff <= 0) {
-        setCountdown('Tirage en cours...');
-        clearInterval(interval);
-        return;
-      }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      const minutes = Math.floor((diff / (1000 * 60)) % 60);
-      const seconds = Math.floor((diff / 1000) % 60);
-      setCountdown(`${days}j ${hours}h ${minutes}m ${seconds}s`);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [drawDate]);
+    if (lotteryId) fetchLottery();
+  }, [lotteryId, fetchLottery]);
+
+  useEffect(() => {
+    setImageLoadError(false);
+  }, [lottery?.imageUrl]);
 
   const handleTicketsChange = (value: string) => {
     const sanitized = value.replace(/[^0-9]/g, '');
@@ -60,19 +118,32 @@ export default function LotteryDetailScreen({ route }: Props) {
     });
   };
 
-  const handlePurchase = () => {
+  const handlePurchase = async () => {
     const quantity = parseInt(ticketsToBuy, 10) || 0;
-    if (quantity <= 0) {
-      alert('Sélectionnez au moins 1 ticket.');
+    if (quantity <= 0 || !lottery) {
+      Alert.alert('Erreur', 'Sélectionnez au moins 1 ticket.');
       return;
     }
-    const total = quantity * POINTS_PER_TICKET;
-    alert(`✅ ${quantity} ticket(s) réservés pour ${lottery.title} (−${total} pts)`);
-    addNotification({
-      category: 'lotteries',
-      title: `${quantity} ticket(s) ajoutés`,
-      description: `${lottery.title} • ${total} pts`,
-    });
+    const total = quantity * lottery.pointsPerTicket;
+    setJoining(true);
+    try {
+      const updated = await joinLottery(lottery.id, quantity);
+      setLottery(updated);
+      setTicketsToBuy('1');
+      addNotification({
+        category: 'lotteries',
+        title: `${quantity} ticket(s) achetés`,
+        description: `${lottery.title} • −${total} pts`,
+      });
+      Alert.alert('Participation confirmée', `${quantity} ticket(s) achetés pour −${total} pts.`);
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error ? err.message : 'Impossible de participer. Vérifiez vos points.'
+      );
+    } finally {
+      setJoining(false);
+    }
   };
 
   const RULES = [
@@ -82,67 +153,160 @@ export default function LotteryDetailScreen({ route }: Props) {
     'Les tickets ne sont pas remboursables une fois achetés.',
   ];
 
+  if (loading || (!lottery && !error)) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Chargement…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !lottery) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.errorText}>{error ?? 'Loterie introuvable'}</Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>Retour</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const pointsPerTicket = lottery.pointsPerTicket ?? 100;
+  const drawDate = lottery.drawDate ?? lottery.endAt;
+  const soldOut = lottery.isTicketStockLimited && (lottery.ticketsRemaining ?? 0) <= 0;
+  const canParticipate = !soldOut && lottery.status === 'active';
+
+  const headerPaddingTop = Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.toolbar}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={colors.textMain} />
-          </TouchableOpacity>
-          <Text style={styles.toolbarTitle}>Loterie</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <TabScreenHeader
+        title="Loterie"
+        scrollY={scrollY}
+        onBackPress={() => navigation.goBack()}
+        onNotificationPress={handleNotificationPress}
+        onProfilePress={handleProfilePress}
+        unreadCount={unreadCount}
+        cashback={cashback}
+        points={points}
+        showPillsRow
+      />
+      <Animated.ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: headerPaddingTop }]}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+      >
+        {lottery.imageUrl && !imageLoadError ? (
+          <Image
+            source={{ uri: normalizeImageUrl(lottery.imageUrl) }}
+            style={styles.heroImage}
+            resizeMode="cover"
+            onError={() => setImageLoadError(true)}
+          />
+        ) : (
+          <View style={styles.heroImagePlaceholder}>
+            <Ionicons name="ticket-outline" size={56} color={colors.greyInactive} />
+          </View>
+        )}
 
-        <LinearGradient
-          colors={[colors.primaryPurple, colors.primaryBlue]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}>
-          <Text style={styles.heroLabel}>Loterie KashUP</Text>
+        <View style={styles.heroCard}>
           <Text style={styles.heroTitle}>{lottery.title}</Text>
-          <Text style={styles.heroPrize}>{lottery.prize}</Text>
-          <Text style={styles.heroDraw}>{lottery.drawDate}</Text>
-        </LinearGradient>
-
-        <Text style={styles.description}>{lottery.description}</Text>
-
-        <View style={styles.countdownCard}>
-          <Text style={styles.countdownLabel}>Tirage dans</Text>
-          <Text style={styles.countdownValue}>{countdown}</Text>
+          <Text style={styles.heroPrize}>
+            {lottery.prizeTitle ?? lottery.prizeDescription ?? 'Lot à gagner'}
+          </Text>
+          {drawDate && (
+            <View style={styles.heroCountdownWrap}>
+              <LotteryCountdown drawDate={drawDate} showIcon={true} textStyle={styles.heroCountdown} />
+            </View>
+          )}
         </View>
 
-        <LinearGradient
-          colors={[colors.primaryBlue, colors.primaryPurple]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.purchaseCard}>
-          <View style={styles.ticketHeader}>
-            <Text style={styles.ticketTitle}>Acheter des tickets</Text>
-            <Text style={styles.ticketPrice}>1 ticket = {POINTS_PER_TICKET} pts</Text>
+        {lottery.description ? (
+          <Text style={styles.description}>{lottery.description}</Text>
+        ) : null}
+
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Coût</Text>
+            <Text style={styles.infoValue}>{pointsPerTicket} pts / ticket</Text>
           </View>
-          <Text style={styles.ticketText}>Choisis le nombre de tickets à miser sur cette loterie.</Text>
-          <View style={styles.ticketRow}>
-            <TouchableOpacity style={styles.stepButton} onPress={() => incrementTickets(-1)}>
-              <Text style={styles.stepButtonText}>-</Text>
-            </TouchableOpacity>
-            <TextInput
-              style={styles.ticketInput}
-              keyboardType="numeric"
-              value={ticketsToBuy}
-              onChangeText={handleTicketsChange}
-            />
-            <TouchableOpacity style={styles.stepButton} onPress={() => incrementTickets(1)}>
-              <Text style={styles.stepButtonText}>+</Text>
+          {lottery.isTicketStockLimited && lottery.ticketsRemaining != null && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Tickets restants</Text>
+              <Text
+                style={[
+                  styles.infoValue,
+                  lottery.ticketsRemaining <= 0 && styles.infoValueSoldOut,
+                ]}>
+                {lottery.ticketsRemaining <= 0
+                  ? 'Épuisé'
+                  : `${lottery.ticketsRemaining}`}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {lottery.userTicketCount != null && lottery.userTicketCount > 0 && (
+          <View style={styles.userTicketsCard}>
+            <Ionicons name="ticket" size={20} color={colors.primary} />
+            <Text style={styles.userTicketsText}>
+              Vous avez {lottery.userTicketCount} ticket{lottery.userTicketCount > 1 ? 's' : ''}
+            </Text>
+          </View>
+        )}
+
+        {canParticipate && (
+          <View style={styles.purchaseCard}>
+            <Text style={styles.purchaseCardTitle}>Participer</Text>
+            <Text style={styles.purchaseCardSubtitle}>
+              1 ticket = {pointsPerTicket} pts. Choisissez le nombre de tickets.
+            </Text>
+            <View style={styles.ticketRow}>
+              <TouchableOpacity style={styles.stepButton} onPress={() => incrementTickets(-1)}>
+                <Text style={styles.stepButtonText}>−</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={styles.ticketInput}
+                keyboardType="numeric"
+                value={ticketsToBuy}
+                onChangeText={handleTicketsChange}
+              />
+              <TouchableOpacity style={styles.stepButton} onPress={() => incrementTickets(1)}>
+                <Text style={styles.stepButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[styles.ticketPrimaryButton, joining && styles.ticketPrimaryButtonDisabled]}
+              onPress={handlePurchase}
+              disabled={joining}>
+              {joining ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Text style={styles.ticketPrimaryText}>Acheter mes tickets</Text>
+              )}
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.ticketPrimaryButton} onPress={handlePurchase}>
-            <Text style={styles.ticketPrimaryText}>Acheter mes tickets</Text>
-          </TouchableOpacity>
-        </LinearGradient>
+        )}
+
+        {soldOut && (
+          <View style={styles.soldOutCard}>
+            <Ionicons name="close-circle" size={24} color={colors.textSecondary} />
+            <Text style={styles.soldOutText}>Tickets épuisés</Text>
+          </View>
+        )}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Règlement de la loterie</Text>
@@ -152,44 +316,17 @@ export default function LotteryDetailScreen({ route }: Props) {
             </Text>
           ))}
         </View>
-
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  purchaseCard: {
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  ticketHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  ticketTitle: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  ticketPrice: {
-    color: '#F1F5FF',
-    fontSize: 13,
-  },
-  ticketText: {
-    color: '#E5E5FF',
-    fontSize: 14,
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.slateBackground,
-  },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.lg,
-  },
+  safeArea: { flex: 1, backgroundColor: colors.slateBackground },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  loadingText: { marginTop: spacing.md, color: colors.textSecondary },
+  errorText: { color: colors.accentRed, marginBottom: spacing.md, textAlign: 'center' },
+  content: { padding: spacing.lg, gap: spacing.lg },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -206,69 +343,117 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.white,
   },
-  toolbarTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.textMain,
+  backButtonText: { fontSize: 16, fontWeight: '600', color: colors.primary },
+  toolbarTitle: { fontSize: 18, fontWeight: '800', color: colors.textMain },
+  heroImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: radius.lg,
+    backgroundColor: colors.greyLight,
   },
-  hero: {
+  heroImagePlaceholder: {
+    width: '100%',
+    height: 160,
+    borderRadius: radius.lg,
+    backgroundColor: colors.greyLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCard: {
+    backgroundColor: colors.white,
     borderRadius: radius.lg,
     padding: spacing.lg,
     gap: spacing.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  heroLabel: {
-    color: '#F5F5FF',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    fontSize: 12,
-  },
-  heroTitle: {
-    color: colors.white,
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  heroPrize: {
-    color: '#E0E7FF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  heroDraw: {
-    color: '#E0E7FF',
-    fontSize: 14,
-  },
-  countdownCard: {
+  heroTitle: { color: colors.textMain, fontSize: 22, fontWeight: '800' },
+  heroPrize: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },
+  heroCountdownWrap: { marginTop: spacing.xs },
+  heroCountdown: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
+  infoCard: {
+    backgroundColor: colors.white,
     borderRadius: radius.lg,
-    backgroundColor: colors.greyLight,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  infoLabel: { fontSize: 14, color: colors.textSecondary },
+  infoValue: { fontSize: 14, fontWeight: '700', color: colors.textMain },
+  infoValueSoldOut: { color: colors.accentRed },
+  description: { fontSize: 15, color: colors.textMain, lineHeight: 22 },
+  userTicketsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     padding: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+  },
+  userTicketsText: { fontSize: 14, fontWeight: '600', color: colors.textMain },
+  purchaseCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  purchaseCardTitle: { fontSize: 18, fontWeight: '700', color: colors.textMain },
+  purchaseCardSubtitle: { fontSize: 14, color: colors.textSecondary },
+  ticketRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepButton: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.greyLight,
     alignItems: 'center',
-    gap: spacing.xs,
+    justifyContent: 'center',
   },
-  countdownLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  countdownValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.textMain,
-  },
-  description: {
-    fontSize: 15,
-    color: colors.textMain,
-    lineHeight: 22,
-  },
-  primaryButton: {
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
-  primaryGradient: {
+  stepButtonText: { fontSize: 22, fontWeight: '600', color: colors.textMain },
+  ticketInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.greyBorder,
+    borderRadius: radius.md,
     paddingVertical: spacing.sm,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+    backgroundColor: colors.white,
+  },
+  ticketPrimaryButton: {
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  primaryText: {
-    color: colors.white,
-    fontWeight: '700',
+  ticketPrimaryButtonDisabled: { opacity: 0.7 },
+  ticketPrimaryText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  soldOutCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.lg,
+    backgroundColor: colors.greyLight,
+    borderRadius: radius.lg,
   },
+  soldOutText: { fontSize: 16, fontWeight: '700', color: colors.textSecondary },
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.lg,
@@ -280,59 +465,6 @@ const styles = StyleSheet.create({
     elevation: 3,
     gap: spacing.sm,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textMain,
-  },
-  cardText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  ticketRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  stepButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: '#FFFFFF22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepButtonText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  ticketInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#FFFFFF66',
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.white,
-    backgroundColor: '#FFFFFF22',
-  },
-  ticketPrimaryButton: {
-    borderRadius: radius.pill,
-    backgroundColor: colors.white,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  ticketPrimaryText: {
-    color: colors.primaryBlue,
-    fontWeight: '700',
-  },
-  ruleLine: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: colors.textMain },
+  ruleLine: { color: colors.textSecondary, fontSize: 14 },
 });
-
-
