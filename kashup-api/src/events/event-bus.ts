@@ -7,7 +7,16 @@ export type NotificationEvent =
     }
   | {
     type: 'boost_purchased';
-    payload: { userId: string; boostId: string };
+    payload: {
+      userId: string;
+      boostId: string;
+      boostName?: string;
+      boostDescription?: string;
+      multiplier?: number;
+      target?: string;
+      costInPoints?: number;
+      expiresAt?: string;
+    };
   }
   | {
     type: 'lottery_joined';
