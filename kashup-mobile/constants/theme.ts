@@ -25,9 +25,9 @@ export const colors = {
   lightPurple: '#d1fae5',
   lightGreen: '#d1fae5',
   textInverse: '#FFFFFF',
-  // Fond ardoise (tech / premium) – utilisé sur tout le site
-  slateBackground: '#E4E8EF',
-  slateBackgroundLight: '#F2F4F8',
+  // Fond ardoise très clair – utilisé sur tout l'app
+  slateBackground: '#F4F5F8',
+  slateBackgroundLight: '#F9FAFB',
 };
 
 export const typography = {

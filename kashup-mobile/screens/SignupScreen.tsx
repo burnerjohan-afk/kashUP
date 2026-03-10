@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Google from 'expo-auth-session/providers/google';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -105,7 +105,14 @@ export default function SignupScreen() {
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <ScrollView contentContainerStyle={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Créer mon compte</Text>
         <Text style={styles.subtitle}>Rejoignez la communauté qui booste l’économie locale.</Text>
 
@@ -185,7 +192,8 @@ export default function SignupScreen() {
             <Text style={styles.primaryText}>Créer un compte</Text>
           </LinearGradient>
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

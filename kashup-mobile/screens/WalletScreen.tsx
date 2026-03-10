@@ -67,10 +67,7 @@ export default function WalletScreen() {
   const topTransactions = transactions.slice(0, 4);
   const personalImpact = data.personalImpact;
   const communityImpact = data.communityImpact;
-  const monthlyObjective = data.wallet?.monthlyObjective ?? personalImpact.target;
   const monthlyInjected = data.wallet?.monthlyInjected ?? personalImpact.monthlyInjected;
-  const personalProgress =
-    monthlyObjective > 0 ? Math.min(100, (monthlyInjected / monthlyObjective) * 100) : 0;
 
   const handleScanQR = useCallback(() => {
     let nav: any = navigation;
@@ -165,12 +162,6 @@ export default function WalletScreen() {
                   <Text style={styles.userSummaryPointsLabel}>Points KashUP</Text>
                   <Text style={styles.userSummaryPointsValue}>{formatPoints(walletPoints)}</Text>
                 </View>
-                {loading && (
-                  <View style={styles.userSummaryLoaderRow}>
-                    <ActivityIndicator size="small" color={colors.white} />
-                    <Text style={styles.userSummaryLoaderText}>Mise à jour des données…</Text>
-                  </View>
-                )}
               </View>
               <View style={styles.userSummaryTabs}>
                 {walletSegments.map((tab) => {
@@ -205,150 +196,70 @@ export default function WalletScreen() {
         </View>
 
         <View style={styles.section}>
-          <View style={styles.sectionTitleRow}>
-            <View style={styles.sectionTitleIconWrap}>
-              <Ionicons name="leaf" size={20} color={colors.primary} />
+          <Text style={styles.impactSectionTitle}>Votre impact</Text>
+          <Text style={styles.impactSectionIntro}>
+            En achetant chez les partenaires KashUP, vous soutenez l’économie locale. Voici ce que vous avez généré.
+          </Text>
+          <View style={styles.impactCard}>
+            <View style={styles.impactCardRow}>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>{formatCurrency(monthlyInjected)}</Text>
+                <Text style={styles.impactStatLabel}>Dépensé chez les partenaires ce mois</Text>
+              </View>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>{personalImpact.merchantsHelped}</Text>
+                <Text style={styles.impactStatLabel}>Commerces soutenus</Text>
+              </View>
             </View>
-            <Text style={styles.sectionTitle}>Ton impact local</Text>
-          </View>
-          <View style={styles.personalImpactCard}>
-            <LinearGradient
-              colors={['rgba(5,163,87,0.08)', 'rgba(5,163,87,0.02)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.personalImpactGradient}
-            >
-              <View style={styles.personalImpactHeader}>
-                <Text style={styles.personalImpactTitle} numberOfLines={2}>
-                  Économie locale renforcée
+            <View style={styles.impactCardRow}>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>{personalImpact.purchasesCount}</Text>
+                <Text style={styles.impactStatLabel}>Achats effectués</Text>
+              </View>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>
+                  {personalImpact.boostRate > 0 ? `+${personalImpact.boostRate.toFixed(0)} %` : '—'}
                 </Text>
-                <View style={styles.personalImpactBadge}>
-                  <Ionicons name="trending-up" size={14} color={colors.primary} />
-                  <Text style={styles.personalImpactBadgeText}>Actif</Text>
-                </View>
+                <Text style={styles.impactStatLabel}>Taux de cashback moyen</Text>
               </View>
-              <Text style={styles.personalImpactSubtitle} numberOfLines={3}>
-                À force d’achats locaux, vous créez un cercle vertueux sur votre territoire.
-              </Text>
-
-              <View style={styles.personalHighlightRow}>
-                <View style={styles.personalHighlightBlock}>
-                  <Ionicons name="wallet-outline" size={18} color={colors.primary} style={styles.kpiIcon} />
-                  <Text style={styles.personalHighlightLabel}>Injecté ce mois-ci</Text>
-                  <Text style={styles.personalHighlightValue}>{formatCurrency(monthlyInjected)}</Text>
-                </View>
-                <View style={styles.personalHighlightBlock}>
-                  <Ionicons name="flag-outline" size={18} color={colors.primary} style={styles.kpiIcon} />
-                  <Text style={styles.personalHighlightLabel}>Objectif KashUP</Text>
-                  <Text style={styles.personalHighlightValue}>{formatCurrency(monthlyObjective)}</Text>
-                </View>
-              </View>
-
-              <View style={styles.personalProgressWrap}>
-                <View style={styles.personalProgressTrack}>
-                  <LinearGradient
-                    colors={[colors.primary, colors.primaryDark]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.personalProgressFill, { width: `${Math.round(personalProgress)}%` }]}
-                  />
-                </View>
-                <Text style={styles.personalProgressLabel}>{Math.round(personalProgress)} %</Text>
-              </View>
-
-              <View style={styles.personalKpiRow}>
-                <View style={styles.personalKpi}>
-                  <View style={styles.personalKpiIconWrap}>
-                    <Ionicons name="storefront-outline" size={20} color={colors.primary} />
-                  </View>
-                  <Text style={styles.personalKpiLabel}>Commerces aidés</Text>
-                  <Text style={styles.personalKpiValue}>{personalImpact.merchantsHelped}</Text>
-                </View>
-                <View style={styles.personalKpi}>
-                  <View style={styles.personalKpiIconWrap}>
-                    <Ionicons name="cart-outline" size={20} color={colors.primary} />
-                  </View>
-                  <Text style={styles.personalKpiLabel}>Achats locaux</Text>
-                  <Text style={styles.personalKpiValue}>{personalImpact.purchasesCount}</Text>
-                </View>
-                <View style={styles.personalKpi}>
-                  <View style={styles.personalKpiIconWrap}>
-                    <Ionicons name="flash-outline" size={20} color={colors.primary} />
-                  </View>
-                  <Text style={styles.personalKpiLabel}>Cashback boosté</Text>
-                  <Text style={styles.personalKpiValue}>
-                    {personalImpact.boostRate > 0 ? `+${personalImpact.boostRate.toFixed(1)} %` : '--'}
-                  </Text>
-                </View>
-              </View>
-            </LinearGradient>
+            </View>
           </View>
 
-          <View style={styles.kashupImpactCard}>
-            <LinearGradient
-              colors={['rgba(5,163,87,0.06)', 'rgba(5,163,87,0.02)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.kashupImpactGradient}
-            >
-              <View style={styles.kashupHeaderBlock}>
-                <View style={styles.kashupTitleRow}>
-                  <View style={styles.kashupTitleIconWrap}>
-                    <Ionicons name="people" size={22} color={colors.primary} />
-                  </View>
-                  <Text style={styles.kashupTitle} numberOfLines={2}>L’impact local KashUP</Text>
-                </View>
-                <View style={styles.kashupPillWrap}>
-                  <View style={styles.kashupPill}>
-                    <Ionicons name="heart" size={12} color={colors.primary} />
-                    <Text style={styles.kashupPillText}>Communauté</Text>
-                  </View>
-                </View>
+          <Text style={[styles.impactSectionTitle, styles.impactSectionTitleSecond]}>
+            L’impact de toute la communauté KashUP
+          </Text>
+          <Text style={styles.impactSectionIntro}>
+            Ensemble, les membres redonnent du pouvoir d’achat à l’économie locale. Voici les chiffres.
+          </Text>
+          <View style={styles.impactCard}>
+            <View style={styles.impactCardRow}>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>
+                  {communityImpact ? formatCurrency(communityImpact.cashbackDistribue) : '—'}
+                </Text>
+                <Text style={styles.impactStatLabel}>Cashback redistribué ce mois</Text>
               </View>
-              <Text style={styles.kashupSubtitle} numberOfLines={3}>
-                Ensemble, KashUP et ses membres réinjectent du pouvoir d’achat dans tout l’archipel.
-              </Text>
-              <View style={styles.kashupHighlightRow}>
-                <View style={styles.kashupHighlightBlock}>
-                  <Ionicons name="calendar-outline" size={20} color={colors.primary} style={styles.kashupBlockIcon} />
-                  <Text style={styles.kashupStatLabel}>Ce mois-ci</Text>
-                  <Text style={styles.kashupHighlightValue}>
-                    {communityImpact ? formatCurrency(communityImpact.cashbackDistribue) : '--'}
-                  </Text>
-                </View>
-                <View style={styles.kashupHighlightBlock}>
-                  <Ionicons name="stats-chart-outline" size={20} color={colors.primary} style={styles.kashupBlockIcon} />
-                  <Text style={styles.kashupStatLabel}>Cette année</Text>
-                  <Text style={styles.kashupHighlightValue}>
-                    {communityImpact ? formatCurrency(communityImpact.volumeAchat) : '--'}
-                  </Text>
-                </View>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>
+                  {communityImpact ? formatCurrency(communityImpact.volumeAchat) : '—'}
+                </Text>
+                <Text style={styles.impactStatLabel}>Volume d’achats cette année</Text>
               </View>
-              <View style={styles.kashupStatGrid}>
-                <View style={styles.kashupStatBlock}>
-                  <View style={styles.kashupStatTextWrap}>
-                    <Text style={styles.kashupStatLabel}>Commerces aidés</Text>
-                    <Text style={styles.kashupStatValue}>
-                      {communityImpact ? String(communityImpact.partenairesActifs) : '--'}
-                    </Text>
-                  </View>
-                  <View style={styles.kashupStatIconWrap}>
-                    <Ionicons name="storefront-outline" size={20} color={colors.primary} />
-                  </View>
-                </View>
-                <View style={styles.kashupStatBlock}>
-                  <View style={styles.kashupStatTextWrap}>
-                    <Text style={styles.kashupStatLabel}>Transactions</Text>
-                    <Text style={styles.kashupStatValue}>
-                      {communityImpact ? String(communityImpact.totalTransactions) : '--'}
-                    </Text>
-                  </View>
-                  <View style={styles.kashupStatIconWrap}>
-                    <Ionicons name="receipt-outline" size={20} color={colors.primary} />
-                  </View>
-                </View>
+            </View>
+            <View style={styles.impactCardRow}>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>
+                  {communityImpact != null ? communityImpact.partenairesActifs : '—'}
+                </Text>
+                <Text style={styles.impactStatLabel}>Commerces partenaires</Text>
               </View>
-            </LinearGradient>
+              <View style={styles.impactStat}>
+                <Text style={styles.impactStatValue}>
+                  {communityImpact != null ? communityImpact.totalTransactions : '—'}
+                </Text>
+                <Text style={styles.impactStatLabel}>Transactions réalisées</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -497,6 +408,7 @@ const styles = StyleSheet.create({
   },
   userSummaryTextBlock: {
     gap: spacing.xs,
+    minHeight: 118,
   },
   userSummaryLabel: {
     color: 'rgba(255,255,255,0.8)',
@@ -602,314 +514,64 @@ const styles = StyleSheet.create({
     color: colors.textMain,
     marginBottom: spacing.md,
   },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.textMain,
-    letterSpacing: -0.3,
-    marginBottom: spacing.md,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-    flexWrap: 'wrap',
-  },
-  sectionTitleIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(5,163,87,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  personalImpactCard: {
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(5,163,87,0.25)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  personalImpactGradient: {
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-  },
-  personalImpactHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  personalImpactTitle: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.textMain,
-  },
-  personalImpactBadge: {
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(5,163,87,0.12)',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  personalImpactBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
-    letterSpacing: 0.5,
-  },
-  personalImpactSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: spacing.md,
-  },
-  personalHighlightRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  personalHighlightBlock: {
-    flex: 1,
-    minWidth: 130,
-    backgroundColor: 'rgba(5,163,87,0.08)',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(5,163,87,0.15)',
-  },
-  kpiIcon: {
-    marginBottom: spacing.xs,
-  },
-  personalHighlightLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  personalHighlightValue: {
+  impactSectionTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: colors.primary,
-    marginTop: spacing.xs,
-  },
-  personalProgressWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginVertical: spacing.md,
-  },
-  personalProgressTrack: {
-    flex: 1,
-    height: 10,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(5,163,87,0.2)',
-    overflow: 'hidden',
-  },
-  personalProgressFill: {
-    height: '100%',
-    borderRadius: radius.pill,
-  },
-  personalProgressLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primary,
-    minWidth: 44,
-    textAlign: 'right',
-  },
-  personalKpiRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  personalKpi: {
-    flex: 1,
-    minWidth: 95,
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.greyBorder,
-  },
-  personalKpiIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(5,163,87,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: colors.textMain,
     marginBottom: spacing.xs,
   },
-  personalKpiLabel: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textAlign: 'center',
+  impactSectionTitleSecond: {
+    marginTop: spacing.xl,
   },
-  personalKpiValue: {
+  impactSectionIntro: {
     fontSize: 15,
-    fontWeight: '800',
-    color: colors.textMain,
-    marginTop: 2,
+    color: colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: spacing.md,
   },
-  kashupImpactCard: {
-    marginTop: spacing.lg,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
+  impactCard: {
     backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: 'rgba(5,163,87,0.2)',
     shadowColor: colors.black,
     shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  kashupImpactGradient: {
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-  },
-  kashupHeaderBlock: {
-    flexDirection: 'column',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  kashupTopRow: {
+  impactCardRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  kashupTitleRow: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  kashupTitleIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(5,163,87,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kashupTitle: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.textMain,
-  },
-  kashupPillWrap: {
-    alignSelf: 'flex-start',
-  },
-  kashupPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    backgroundColor: 'rgba(5,163,87,0.12)',
-    borderRadius: radius.pill,
-  },
-  kashupPillText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  kashupSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  kashupHighlightRow: {
-    flexDirection: 'row',
     gap: spacing.md,
     marginBottom: spacing.md,
   },
-  kashupHighlightBlock: {
+  impactStat: {
     flex: 1,
-    minWidth: 0,
+    minWidth: '45%',
+    backgroundColor: 'rgba(5,163,87,0.06)',
     borderRadius: radius.md,
-    backgroundColor: 'rgba(5,163,87,0.08)',
     padding: spacing.md,
     borderWidth: 1,
     borderColor: 'rgba(5,163,87,0.12)',
   },
-  kashupBlockIcon: {
-    marginBottom: spacing.xs,
-  },
-  kashupHighlightValue: {
-    fontSize: 20,
+  impactStatValue: {
+    fontSize: 18,
     fontWeight: '800',
     color: colors.primary,
-    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
   },
-  kashupStatGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  kashupStatBlock: {
-    flex: 1,
-    minWidth: 120,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.greyBorder,
-  },
-  kashupStatTextWrap: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  kashupStatIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(5,163,87,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kashupStatLabel: {
-    fontSize: 10,
+  impactStatLabel: {
+    fontSize: 13,
     color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textAlign: 'center',
+    lineHeight: 18,
   },
-  kashupStatValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textMain,
-    marginTop: 2,
+  impactPlaceholder: {
+    fontSize: 14,
+    color: colors.textSecondary,
     textAlign: 'center',
+    paddingVertical: spacing.md,
   },
   transactionsWrapper: {
     gap: spacing.sm,

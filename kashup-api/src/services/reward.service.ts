@@ -150,7 +150,16 @@ export const purchaseBoost = async (userId: string, input: PurchaseBoostInput) =
 
     notificationBus.emitEvent({
       type: 'boost_purchased',
-      payload: { userId, boostId: boost.id }
+      payload: {
+        userId,
+        boostId: boost.id,
+        boostName: boost.name,
+        boostDescription: boost.description,
+        multiplier: boost.multiplier,
+        target: boost.target,
+        costInPoints: boost.costInPoints,
+        expiresAt: expiresAt.toISOString(),
+      },
     });
     boostPurchaseCounter.inc();
 

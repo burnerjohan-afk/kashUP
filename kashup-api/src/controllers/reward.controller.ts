@@ -118,7 +118,7 @@ export const purchaseBoostHandler = asyncHandler(async (req: Request, res: Respo
     throw new AppError('Authentification requise', 401);
   }
   const result = await purchaseBoost(req.user.sub, { boostId: req.params.id });
-  res.json(result);
+  sendSuccess(res, result, null, 200, 'Boost activé');
 });
 
 // Contrôleurs admin

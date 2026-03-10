@@ -257,7 +257,8 @@ export const getRewardsSummary = async (userId: string) => {
     walletBalance: 0,
     partners: [],
     boostedPartners: [],
-    rewards: []
+    rewards: [],
+    boostsActifs: []
   };
 
   try {
@@ -283,17 +284,19 @@ export const getRewardsSummary = async (userId: string) => {
       )
     ]);
 
+    const boostsActifs = boosts.map((userBoost) => ({
+      id: userBoost.boost.id,
+      name: userBoost.boost.name,
+      multiplier: userBoost.boost.multiplier,
+      expiresAt: userBoost.expiresAt
+    }));
     return {
       points: wallet?.soldePoints ?? 0,
       walletBalance: wallet?.soldeCashback ?? 0,
       partners: [],
       boostedPartners: [],
-      rewards: boosts.map((userBoost) => ({
-        id: userBoost.boost.id,
-        name: userBoost.boost.name,
-        multiplier: userBoost.boost.multiplier,
-        expiresAt: userBoost.expiresAt
-      }))
+      rewards: boostsActifs,
+      boostsActifs
     };
   } catch (error) {
     logger.error({ userId, error: error instanceof Error ? error.message : String(error) }, '[API] Prisma timeout – default response returned for getRewardsSummary');

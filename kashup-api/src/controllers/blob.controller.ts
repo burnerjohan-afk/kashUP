@@ -1,13 +1,16 @@
 /**
  * Proxy pour servir les images/fichiers depuis Vercel Blob (store privé).
  * GET /api/v1/blob?url=... — stream le contenu du blob vers le client.
- * GET /api/v1/rewards/file?path=uploads/rewards/xxx — stream une image reward/loterie par pathname (pour APK quand la BDD a un chemin relatif).
+ * GET /api/v1/rewards/file?path=uploads/rewards/xxx — stream une image reward/loterie par pathname.
+ * En prod : depuis Blob. En dev (sans BLOB_READ_WRITE_TOKEN) : depuis le disque local uploads/rewards/.
  * Supporte les requêtes Range (bytes) pour la lecture vidéo (expo-av / AVPlayer).
  */
 
 import { Request, Response } from 'express';
 import { Readable, Transform } from 'stream';
 import { get, head } from '@vercel/blob';
+import path from 'path';
+import fs from 'fs';
 
 const BLOB_HOST = 'blob.vercel-storage.com';
 
@@ -125,15 +128,27 @@ export async function getRewardFileByPath(req: Request, res: Response): Promise<
     res.status(400).json({ error: 'Paramètre path requis (ex: path=uploads/rewards/filename.jpg)' });
     return;
   }
-  const pathname = rawPath.trim().replace(/^\/+/, '');
+  const pathname = rawPath.trim().replace(/\\/g, '/').replace(/^\/+/, '');
   if (!pathname.startsWith(REWARDS_BLOB_PREFIX) || pathname.includes('..')) {
     res.status(400).json({ error: 'Chemin non autorisé (uploads/rewards/ uniquement)' });
     return;
   }
+
+  // En dev sans token Blob : servir depuis le disque local (uploads/rewards/)
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    res.status(503).json({ error: 'Blob non configuré' });
+    const localPath = path.join(process.cwd(), pathname);
+    if (!fs.existsSync(localPath) || !fs.statSync(localPath).isFile()) {
+      res.status(404).json({ error: 'Image introuvable (fichier local)' });
+      return;
+    }
+    const ext = path.extname(pathname).toLowerCase();
+    const mime: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+    res.setHeader('Content-Type', mime[ext] || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    fs.createReadStream(localPath).pipe(res);
     return;
   }
+
   try {
     const result = await get(pathname, { access: 'private' as const });
     if (!result || result.statusCode !== 200) {

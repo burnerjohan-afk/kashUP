@@ -5,6 +5,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -840,27 +842,33 @@ export default function ProfileDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
-      <LinearGradient
-        colors={[colors.slateBackgroundLight, colors.slateBackground]}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.bandeauBlanc}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={20} color={colors.textMain} />
-        </TouchableOpacity>
-        <Text style={styles.toolbarTitle}>{hero.title}</Text>
-        <View style={{ width: 40 }} />
-      </View>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + BOTTOM_TAB_BAR_HEIGHT }]}
-        showsVerticalScrollIndicator={false}
-      >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        <LinearGradient
+          colors={[colors.slateBackgroundLight, colors.slateBackground]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.bandeauBlanc}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={20} color={colors.textMain} />
+          </TouchableOpacity>
+          <Text style={styles.toolbarTitle}>{hero.title}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + BOTTOM_TAB_BAR_HEIGHT }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         <View style={styles.hero}>
           <Text style={styles.heroSubtitle}>{hero.subtitle}</Text>
         </View>
 
         {renderContent()}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

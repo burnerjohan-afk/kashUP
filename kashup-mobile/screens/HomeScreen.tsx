@@ -384,12 +384,6 @@ export default function HomeScreen() {
                     : '0'}
                 </Text>
               </View>
-              {walletLoading && (
-                <View style={styles.userSummaryLoaderRow}>
-                  <ActivityIndicator size="small" color={colors.white} />
-                  <Text style={styles.userSummaryLoaderText}>Mise à jour des données…</Text>
-                </View>
-              )}
             </View>
             <View style={styles.userSummaryTabs}>
               <TouchableOpacity
@@ -1040,17 +1034,19 @@ function CashbackCard({ partner, onPress }: { partner: PartnerViewModel; onPress
 
   return (
     <TouchableOpacity style={styles.logoOnlyCard} activeOpacity={0.9} onPress={onPress}>
-      <View style={[styles.logoOnlyLogoWrap, { backgroundColor: colors.white }]}>
-        {partnerLogo && !logoError ? (
-          <Image
-            source={{ uri: partnerLogo }}
-            style={styles.logoOnlyLogo}
-            resizeMode="cover"
-            onError={() => setLogoError(true)}
-          />
-        ) : (
-          <Text style={styles.logoOnlyInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
-        )}
+      <View style={styles.logoEncart}>
+        <View style={[styles.logoOnlyLogoWrap, { backgroundColor: colors.white }]}>
+          {partnerLogo && !logoError ? (
+            <Image
+              source={{ uri: partnerLogo }}
+              style={styles.logoOnlyLogo}
+              resizeMode="cover"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <Text style={styles.logoOnlyInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -1063,17 +1059,19 @@ function MostSearchedCard({ partner, onPress, cardStyle }: { partner: PartnerVie
 
   return (
     <TouchableOpacity style={[styles.logoOnlyCard, cardStyle]} activeOpacity={0.85} onPress={onPress}>
-      <View style={[styles.logoOnlyLogoWrap, { backgroundColor: colors.white }]}>
-        {partnerLogo && !logoError ? (
-          <Image
-            source={{ uri: partnerLogo }}
-            style={styles.logoOnlyLogo}
-            resizeMode="cover"
-            onError={() => setLogoError(true)}
-          />
-        ) : (
-          <Text style={styles.logoOnlyInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
-        )}
+      <View style={styles.logoEncart}>
+        <View style={[styles.logoOnlyLogoWrap, { backgroundColor: colors.white }]}>
+          {partnerLogo && !logoError ? (
+            <Image
+              source={{ uri: partnerLogo }}
+              style={styles.logoOnlyLogo}
+              resizeMode="cover"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <Text style={styles.logoOnlyInitials}>{partner.name.slice(0, 2).toUpperCase()}</Text>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -1312,6 +1310,7 @@ const styles = StyleSheet.create({
   },
   userSummaryTextBlock: {
     gap: spacing.xs,
+    minHeight: 118,
   },
   userSummaryLabel: {
     color: 'rgba(255,255,255,0.8)',
@@ -1853,12 +1852,21 @@ const styles = StyleSheet.create({
     marginRight: 0,
     alignItems: 'center',
   },
+  logoEncart: {
+    backgroundColor: colors.greyLight,
+    padding: 6,
+    borderRadius: radius.lg,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
   logoOnlyLogoWrap: {
     width: '100%',
     aspectRatio: 1,
     borderRadius: radius.md,
     overflow: 'hidden',
-    marginBottom: spacing.xs,
+    marginBottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1966,7 +1974,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
   },
   ctaPartnersText: {

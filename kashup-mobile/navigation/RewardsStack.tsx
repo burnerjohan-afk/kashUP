@@ -35,6 +35,7 @@ export default function RewardsStack({ route }: Props) {
         name="RewardsHome"
         component={RewardsScreen}
         initialParams={route.params}
+        key={route.params?.initialTab ? `rewards-${route.params.initialTab}` : undefined}
         options={{ headerShown: false }}
       />
       <Stack.Screen name="ChallengeCategory" component={ChallengeCategoryScreen} options={{ headerShown: false }} />

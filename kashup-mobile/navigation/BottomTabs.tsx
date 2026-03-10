@@ -65,13 +65,26 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 target: route.key,
                 canPreventDefault: true,
               });
-              if (!isFocused && !event.defaultPrevented) {
-                // Toujours rouvrir Partenaires sur la liste, pas sur "Toutes les offres"
-                if (route.name === 'Partenaires') {
+              if (event.defaultPrevented) return;
+              // Toujours aller à l'écran d'entrée du menu (réinitialise la pile si on reclique sur l'onglet actif)
+              switch (route.name) {
+                case 'Accueil':
+                  navigation.navigate('Accueil', { screen: 'HomeLanding' });
+                  break;
+                case 'Partenaires':
                   navigation.navigate('Partenaires', { screen: 'PartnersList' });
-                } else {
+                  break;
+                case 'Cagnotte':
+                  navigation.navigate('Cagnotte', { screen: 'Wallet' });
+                  break;
+                case "Bons d'achat":
+                  navigation.navigate("Bons d'achat");
+                  break;
+                case 'Rewards':
+                  navigation.navigate('Rewards', { screen: 'RewardsHome', params: route.params });
+                  break;
+                default:
                   navigation.navigate(route.name, route.params);
-                }
               }
             };
 

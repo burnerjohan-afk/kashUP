@@ -32,7 +32,9 @@ export const getSpotlightAssociations = async (): Promise<SpotlightAssociation[]
 export type NotificationItem = {
   id: string;
   title: string;
-  description: string;
+  /** Côté API le champ s’appelle body, le client peut l’exposer en description */
+  description?: string;
+  body?: string;
   category: 'boosts' | 'cashback' | 'points' | 'lotteries' | 'system';
   date: string;
   read?: boolean;

@@ -12,8 +12,10 @@ import {
   Dimensions,
   Image,
   ImageBackground,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -209,6 +211,7 @@ export default function GiftCardsScreen() {
   const [selectionOfferRecipient, setSelectionOfferRecipient] = useState('');
   const [selectionOfferSendMode, setSelectionOfferSendMode] = useState<'email' | 'notification'>('notification');
   const [selectionOfferSending, setSelectionOfferSending] = useState(false);
+  const [showCartesUpInfoModal, setShowCartesUpInfoModal] = useState(false);
 
   const [selectionMacaron, setSelectionMacaron] = useState<string>('');
   const [selectionMacaronLibre, setSelectionMacaronLibre] = useState('');
@@ -1585,45 +1588,50 @@ const [contentError, setContentError] = useState<string | null>(null);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-      <LinearGradient
-        colors={[colors.slateBackgroundLight, colors.slateBackground]}
-        style={StyleSheet.absoluteFill}
-      />
-      {giftCardsError && (
-        <TouchableOpacity style={styles.errorBanner} onPress={refetchGiftCards}>
-          <Text style={styles.errorBannerText}>{giftCardsError}</Text>
-          <Text style={styles.errorBannerCta}>Touchez pour réessayer</Text>
-        </TouchableOpacity>
-      )}
-      <TabScreenHeader
-        scrollY={scrollY}
-        onNotificationPress={handleNotificationPress}
-        onProfilePress={handleProfilePress}
-        unreadCount={unreadCount}
-        cashback={cashback}
-        points={points}
-        showPillsRow
-        solidBackground
-      />
-      <AnimatedScrollView
-        style={styles.scrollFill}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15,
-            paddingBottom: Math.max(spacing.xl * 2, insets.bottom + BOTTOM_TAB_AREA),
-          },
-        ]}
-        stickyHeaderIndices={
-          activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? [contentError ? 4 : 3] : []
-        }
-        showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        <LinearGradient
+          colors={[colors.slateBackgroundLight, colors.slateBackground]}
+          style={StyleSheet.absoluteFill}
+        />
+        {giftCardsError && (
+          <TouchableOpacity style={styles.errorBanner} onPress={refetchGiftCards}>
+            <Text style={styles.errorBannerText}>{giftCardsError}</Text>
+            <Text style={styles.errorBannerCta}>Touchez pour réessayer</Text>
+          </TouchableOpacity>
         )}
-        refreshControl={<RefreshControl refreshing={giftCardsLoading} onRefresh={refetchGiftCards} />}
-      >
+        <TabScreenHeader
+          scrollY={scrollY}
+          onNotificationPress={handleNotificationPress}
+          onProfilePress={handleProfilePress}
+          unreadCount={unreadCount}
+          cashback={cashback}
+          points={points}
+          showPillsRow
+          solidBackground
+        />
+        <AnimatedScrollView
+          style={styles.scrollFill}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15,
+              paddingBottom: Math.max(spacing.xl * 2, insets.bottom + BOTTOM_TAB_AREA),
+            },
+          ]}
+          stickyHeaderIndices={
+            activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? [contentError ? 4 : 3] : []
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+          refreshControl={<RefreshControl refreshing={giftCardsLoading} onRefresh={refetchGiftCards} />}
+        >
         <View style={styles.pageHeader}>
           <Text style={styles.pageTitle}>Cartes UP</Text>
         </View>
@@ -1662,6 +1670,11 @@ const [contentError, setContentError] = useState<string | null>(null);
             );
           })}
         </View>
+
+        <TouchableOpacity onPress={() => setShowCartesUpInfoModal(true)} style={styles.moduleInfoTrigger}>
+          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+          <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
+        </TouchableOpacity>
 
         {activeTab === 'mes' && (
           <View style={styles.section}>{renderMyVouchers()}</View>
@@ -1719,6 +1732,8 @@ const [contentError, setContentError] = useState<string | null>(null);
         {activeTab === 'box-up' && renderBoxTab()}
       </AnimatedScrollView>
 
+      </KeyboardAvoidingView>
+
       <PartnerPickerModal
         visible={partnerPickerVisible}
         onClose={() => setPartnerPickerVisible(false)}
@@ -1748,6 +1763,15 @@ const [contentError, setContentError] = useState<string | null>(null);
         onPaymentMethodChange={setSelectionPaymentMethod}
         onConfirmNotification={confirmSelectionUpOfferNotification}
         onConfirmEmail={confirmSelectionUpOfferEmail}
+        unreadCount={unreadCount}
+        cashback={cashback}
+        points={points}
+        onNotificationPress={handleNotificationPress}
+        onProfilePress={handleProfilePress}
+        onNavigateToTab={(tab) => {
+          setSelectionOfferModalVisible(false);
+          (navigation as any).navigate(tab);
+        }}
       />
 
       <PredefinedGiftModal
@@ -1788,6 +1812,36 @@ const [contentError, setContentError] = useState<string | null>(null);
           (navigation as any).navigate(tab);
         }}
       />
+
+      <Modal
+        visible={showCartesUpInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCartesUpInfoModal(false)}>
+        <TouchableOpacity
+          style={styles.moduleInfoModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCartesUpInfoModal(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={styles.moduleInfoModalBox}>
+            <View style={styles.moduleInfoModalHeader}>
+              <Text style={styles.moduleInfoModalTitle}>Cartes UP</Text>
+              <TouchableOpacity onPress={() => setShowCartesUpInfoModal(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Ionicons name="close" size={28} color={colors.textMain} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.moduleInfoModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.moduleIntroTitle}>À quoi ça sert</Text>
+              <Text style={styles.moduleIntroBody}>
+                Les Cartes UP permettent d'offrir ou d'utiliser des cartes cadeaux et des box (packs) partenaires, payantes ou en points.
+              </Text>
+              <Text style={styles.moduleIntroTitle}>Comment ça marche</Text>
+              <Text style={[styles.moduleIntroBody, { marginBottom: 0 }]}>
+                « Mes cartes » liste vos cartes reçues. « Carte Sélection UP » et « Carte UP » permettent d'envoyer une carte cadeau. « Box UP » propose des box à acheter ou à obtenir avec des points.
+              </Text>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1940,7 +1994,19 @@ type SelectionUpOfferModalProps = {
   onPaymentMethodChange?: (method: 'cashback' | 'card') => void;
   onConfirmNotification: () => void;
   onConfirmEmail: () => void;
+  /** Bandeau haut : points et cashback */
+  cashback?: number | null;
+  points?: number | null;
+  unreadCount?: number;
+  onNotificationPress?: () => void;
+  onProfilePress?: () => void;
+  /** Bandeau bas (menu) : ferme le modal et navigue vers l'onglet */
+  onNavigateToTab?: (tab: keyof BottomTabParamList) => void;
 };
+
+const formatPointsModalDisplay = (v: number) => `${v.toLocaleString('fr-FR')} pts`;
+const formatCashbackModalDisplay = (v: number) =>
+  v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function SelectionUpOfferModal({
   visible,
@@ -1957,35 +2023,87 @@ function SelectionUpOfferModal({
   onPaymentMethodChange,
   onConfirmNotification,
   onConfirmEmail,
+  cashback,
+  points,
+  unreadCount = 0,
+  onNotificationPress,
+  onProfilePress,
+  onNavigateToTab,
 }: SelectionUpOfferModalProps) {
   const insets = useSafeAreaInsets();
   const bandeauPaddingTop = Math.max(insets.top, 8);
   const amountValue = Number(amount) || 0;
   const partnerName = partner?.name ?? 'KashUP';
   const partnerLogoUri = partner?.logoUrl ? normalizeImageUrl(partner.logoUrl) : null;
+  const pointsVal = points ?? 0;
+  const cashbackVal = cashback ?? 0;
 
   if (!visible) return null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalSafeArea} edges={['left', 'right', 'bottom']}>
+      <SafeAreaView style={styles.modalSafeArea} edges={['top', 'left', 'right', 'bottom']}>
         <LinearGradient
           colors={[colors.slateBackgroundLight, colors.slateBackground]}
           style={StyleSheet.absoluteFill}
         />
         <View style={[styles.modalBandeauRewards, { paddingTop: bandeauPaddingTop }]}>
           <View style={styles.modalBandeauRewardsInner}>
-            <View style={{ flex: 1 }} />
+            {onNotificationPress ? (
+              <TouchableOpacity style={styles.modalBandeauIcon} onPress={onNotificationPress} activeOpacity={0.7}>
+                <Ionicons name="notifications-outline" size={24} color={colors.textMain} />
+                {unreadCount > 0 && (
+                  <View style={styles.modalBandeauBadge}>
+                    <Text style={styles.modalBandeauBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 36 }} />
+            )}
+            <View style={styles.modalBandeauPillsRow}>
+              <LinearGradient
+                colors={['#059669', colors.primary, colors.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalBandeauPill}>
+                <Ionicons name="star" size={16} color="#FFF" />
+                <Text style={styles.modalBandeauPillText}>{formatPointsModalDisplay(pointsVal)}</Text>
+              </LinearGradient>
+              <LinearGradient
+                colors={['#059669', colors.primary, colors.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalBandeauPill}>
+                <Text style={styles.modalBandeauPillSymbol}>€</Text>
+                <Text style={styles.modalBandeauPillText}>{formatCashbackModalDisplay(cashbackVal)}</Text>
+              </LinearGradient>
+            </View>
+            {onProfilePress ? (
+              <TouchableOpacity style={styles.modalBandeauIcon} onPress={onProfilePress} activeOpacity={0.7}>
+                <Ionicons name="person-circle-outline" size={24} color={colors.textMain} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 36 }} />
+            )}
             <TouchableOpacity style={styles.modalBandeauClose} onPress={onClose} activeOpacity={0.7}>
               <Ionicons name="close" size={24} color={colors.textMain} />
             </TouchableOpacity>
           </View>
         </View>
-        <View style={styles.offerModalContentWrap}>
+        <KeyboardAvoidingView
+          style={styles.offerModalContentWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
           <ScrollView
             style={styles.offerModalScrollView}
-            contentContainerStyle={[styles.offerModalScroll, { paddingHorizontal: spacing.lg }]}
-            showsVerticalScrollIndicator={false}>
+            contentContainerStyle={[
+              styles.offerModalScroll,
+              { paddingHorizontal: spacing.lg },
+              onNavigateToTab && { paddingBottom: spacing.xl + 96 },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled">
             <View style={[styles.purchaseCard, { marginBottom: spacing.md }]}>
               <Text style={styles.modalPageTitle}>Offrir - Carte Sélection UP</Text>
               <View style={styles.giftSummary}>
@@ -2122,7 +2240,40 @@ function SelectionUpOfferModal({
               ) : null}
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
+        {onNavigateToTab ? (
+          <View style={[styles.modalTabBarContainer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]} pointerEvents="box-none">
+            <View style={styles.modalTabBarPill}>
+              <View style={styles.modalTabBarPillInner}>
+                {MODAL_TABS.map((tab) => {
+                  const isFocused = tab.name === "Bons d'achat";
+                  return (
+                    <TouchableOpacity
+                      key={tab.name}
+                      style={styles.modalTabBarTab}
+                      onPress={() => onNavigateToTab(tab.name)}
+                      activeOpacity={0.7}>
+                      <View style={[styles.modalTabBarTabContent, isFocused && styles.modalTabBarTabContentActive]}>
+                        <Ionicons
+                          name={tab.icon as any}
+                          size={24}
+                          color={isFocused ? '#047857' : '#3C3C3C'}
+                        />
+                        <Text
+                          style={[styles.modalTabBarTabLabel, isFocused && styles.modalTabBarTabLabelActive]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          textAlign="center">
+                          {tab.title}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        ) : null}
       </SafeAreaView>
     </Modal>
   );
@@ -2429,16 +2580,20 @@ function PredefinedGiftModal({
             </TouchableOpacity>
           </View>
         </View>
-        <View style={styles.offerModalContentWrap}>
-        <ScrollView
-          style={styles.offerModalScrollView}
-          contentContainerStyle={[
-            styles.offerModalScroll,
-            { paddingHorizontal: spacing.lg },
-            onNavigateToTab && { paddingBottom: spacing.xl + 96 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          stickyHeaderIndices={[1]}>
+        <KeyboardAvoidingView
+          style={[styles.offerModalContentWrap, { flex: 1 }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+          <ScrollView
+            style={styles.offerModalScrollView}
+            contentContainerStyle={[
+              styles.offerModalScroll,
+              { paddingHorizontal: spacing.lg },
+              onNavigateToTab && { paddingBottom: spacing.xl + 96 },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            stickyHeaderIndices={[1]}>
           <View style={[styles.purchaseCard, { marginBottom: spacing.md }]}>
             <Text style={styles.modalPageTitle}>Offrir "{gift.title}”</Text>
           <View style={styles.giftSummary}>
@@ -2542,9 +2697,9 @@ function PredefinedGiftModal({
                       <Image source={{ uri: partnerLogoUri }} style={styles.carteTestLogoSmall} resizeMode="contain" />
                     </View>
                   ) : null}
-                </View>
               </View>
             </View>
+          </View>
           </View>
           <View style={[styles.purchaseCard, { marginTop: spacing.lg }]}>
           <Text style={styles.sectionLabel}>Message</Text>
@@ -2783,8 +2938,8 @@ function PredefinedGiftModal({
             </TouchableOpacity>
           ) : null}
           </View>
-        </ScrollView>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
         {onNavigateToTab ? (
           <View style={[styles.modalTabBarContainer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]} pointerEvents="box-none">
             <View style={styles.modalTabBarPill}>
@@ -2854,6 +3009,65 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  moduleIntro: {
+    backgroundColor: colors.greyLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  moduleIntroTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs / 2,
+  },
+  moduleIntroBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  moduleInfoTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  moduleInfoTriggerText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  moduleInfoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  moduleInfoModalBox: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    maxWidth: '100%',
+    maxHeight: '80%',
+    width: 340,
+  },
+  moduleInfoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  moduleInfoModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  moduleInfoModalScroll: {
+    maxHeight: 320,
   },
   heroCard: {
     borderRadius: radius.lg,

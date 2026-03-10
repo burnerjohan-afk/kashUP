@@ -1,6 +1,7 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +22,9 @@ import { useWallet } from '@/src/hooks/useWallet';
 import { useRewards } from '@/src/hooks/useRewards';
 import { HomeStackParamList } from '../navigation/HomeStack';
 
+/** Marge bas pour que le défilement s'arrête au-dessus du bandeau (tab bar). */
+const BOTTOM_TAB_AREA = 90;
+
 type NavProp = NativeStackNavigationProp<HomeStackParamList, 'Jackpot'>;
 
 export default function JackpotScreen() {
@@ -35,6 +39,7 @@ export default function JackpotScreen() {
 
   const cashback = walletData?.wallet?.soldeCashback ?? null;
   const points = rewardsData?.summary?.points ?? 0;
+  const [showJackpotInfoModal, setShowJackpotInfoModal] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -79,7 +84,10 @@ export default function JackpotScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: TAB_HEADER_HEIGHT + TAB_HEADER_TOP_OFFSET + spacing.md },
+          {
+            paddingTop: TAB_HEADER_HEIGHT + TAB_HEADER_TOP_OFFSET + spacing.md + 12,
+            paddingBottom: Math.max(spacing.xl * 2, insets.bottom + BOTTOM_TAB_AREA),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -93,6 +101,10 @@ export default function JackpotScreen() {
           </View>
         ) : jackpot ? (
           <>
+            <TouchableOpacity onPress={() => setShowJackpotInfoModal(true)} style={styles.moduleInfoTrigger}>
+              <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+              <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
+            </TouchableOpacity>
             <LinearGradient
               colors={['#ffd700', '#ffd700', '#ffd700', '#e6c200']}
               start={{ x: 0.5, y: 0 }}
@@ -185,6 +197,36 @@ export default function JackpotScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={showJackpotInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowJackpotInfoModal(false)}>
+        <TouchableOpacity
+          style={styles.moduleInfoModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowJackpotInfoModal(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={styles.moduleInfoModalBox}>
+            <View style={styles.moduleInfoModalHeader}>
+              <Text style={styles.moduleInfoModalTitle}>Jackpot KashUP</Text>
+              <TouchableOpacity onPress={() => setShowJackpotInfoModal(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Ionicons name="close" size={28} color={colors.textMain} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.moduleInfoModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.moduleIntroTitle}>À quoi ça sert</Text>
+              <Text style={styles.moduleIntroBody}>
+                Le Jackpot KashUP est une cagnotte commune : en participant (achats partenaires, actions), vous cumulez des tickets pour un tirage et pouvez gagner une part du montant.
+              </Text>
+              <Text style={styles.moduleIntroTitle}>Comment ça marche</Text>
+              <Text style={[styles.moduleIntroBody, { marginBottom: 0 }]}>
+                Remplissez les conditions (achats chez les partenaires, nombre d'actions). Plus vous participez, plus vous avez de tickets. Participez gratuitement pour valider votre éligibilité ; le tirage désigne les gagnants.
+              </Text>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -206,6 +248,59 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.accentRed,
     textAlign: 'center',
+  },
+  moduleInfoTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: Math.max(0, spacing.md - 16),
+  },
+  moduleInfoTriggerText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  moduleIntroTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs / 2,
+  },
+  moduleIntroBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  moduleInfoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  moduleInfoModalBox: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    maxWidth: '100%',
+    maxHeight: '80%',
+    width: 340,
+  },
+  moduleInfoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  moduleInfoModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  moduleInfoModalScroll: {
+    maxHeight: 320,
   },
   card: {
     borderRadius: radius.lg,

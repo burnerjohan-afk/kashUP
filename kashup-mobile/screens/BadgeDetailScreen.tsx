@@ -1,6 +1,6 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,6 +9,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '../constants/theme';
 import { RewardsStackParamList } from '../navigation/RewardsStack';
 import { RewardBadge } from '../types/rewards';
+import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
+import { useWallet } from '@/src/hooks/useWallet';
+import { useRewards } from '@/src/hooks/useRewards';
+import { useNotifications } from '../context/NotificationsContext';
 
 type BadgeRoute = RouteProp<RewardsStackParamList, 'BadgeDetail'>;
 
@@ -18,23 +22,47 @@ type Props = {
 
 export default function BadgeDetailScreen({ route }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RewardsStackParamList>>();
+  const insets = useSafeAreaInsets();
   const { badge } = route.params;
+  const { data: walletData } = useWallet();
+  const { data: rewardsData } = useRewards();
+  const { notifications } = useNotifications();
+  const cashback = walletData?.wallet?.soldeCashback ?? null;
+  const points = rewardsData?.summary?.points ?? 0;
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleNotificationPress = useCallback(() => {
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Notifications' });
+  }, [navigation]);
+  const handleProfilePress = useCallback(() => {
+    const tabNav = (navigation as any).getParent?.();
+    (tabNav as any)?.navigate?.('Accueil', { screen: 'Profile' });
+  }, [navigation]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <LinearGradient
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.toolbar}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={colors.textMain} />
-          </TouchableOpacity>
-          <Text style={styles.toolbarTitle}>Badge</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
+      <TabScreenHeader
+        title="Badge"
+        onBackPress={() => navigation.goBack()}
+        onNotificationPress={handleNotificationPress}
+        onProfilePress={handleProfilePress}
+        unreadCount={unreadCount}
+        cashback={cashback}
+        points={points}
+        showPillsRow
+        solidBackground
+      />
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + spacing.md },
+        ]}
+        showsVerticalScrollIndicator={false}>
         <LinearGradient
           colors={[colors.primaryPurple, colors.primaryBlue]}
           start={{ x: 0, y: 0 }}
@@ -76,28 +104,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+    paddingBottom: spacing.xl * 2,
     gap: spacing.lg,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-  },
-  toolbarTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.textMain,
   },
   hero: {
     borderRadius: radius.lg,

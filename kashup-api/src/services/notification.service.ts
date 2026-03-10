@@ -69,9 +69,23 @@ const handlers: Record<NotificationEvent['type'], (payload: any) => Promise<void
     }
   },
   boost_purchased: async (payload) => {
+    const name = payload.boostName ?? 'Boost';
+    const rapportParts: string[] = [];
+    if (payload.boostDescription && payload.boostDescription.trim()) {
+      rapportParts.push(payload.boostDescription.trim());
+    } else {
+      if (payload.multiplier != null) rapportParts.push(`×${payload.multiplier} sur le cashback`);
+      if (payload.target) {
+        const cible = payload.target === 'partner' ? 'chez un partenaire' : payload.target === 'category' ? 'sur une catégorie' : 'sur tous vos achats';
+        rapportParts.push(cible);
+      }
+    }
+    const ceQueCaRapporte = rapportParts.length > 0 ? rapportParts.join(' • ') : 'avantage cashback activé';
+    const costStr = payload.costInPoints != null ? ` (${payload.costInPoints} pts utilisés)` : '';
+    const body = `Nom du boost : ${name}. Ce que ça rapporte : ${ceQueCaRapporte}.${costStr}`;
     await createNotification(payload.userId, {
-      title: 'Boost activé',
-      body: 'Votre boost est prêt à l’emploi',
+      title: `Boost activé : ${name}`,
+      body,
       category: 'boosts',
       metadata: payload
     });

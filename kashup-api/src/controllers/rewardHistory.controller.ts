@@ -6,25 +6,25 @@ import { AppError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
 import { buildAbsoluteUrl } from '../utils/network';
 
-const hasBlobToken = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+const REWARDS_PATH_PREFIX = 'uploads/rewards/';
 
-/** Corrige /upload/ en /uploads/ et renvoie une URL chargeable par l'app (APK/prod). Si BDD a un chemin relatif et Blob est configuré, pointe vers GET /api/v1/rewards/file?path=... qui sert l'image depuis Blob. */
-function normalizeLotteryImagePath<T extends { imageUrl?: string | null }>(req: Request, lottery: T): T {
+function toForwardSlashPath(s: string): string {
+  return s.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+/** Renvoie une URL chargeable : Blob URL inchangée. Chemin uploads/rewards/ → URL absolue vers /api/v1/rewards/file (servie par l’API courante : Blob en prod, disque local en dev). */
+function normalizeLotteryImageUrl<T extends { imageUrl?: string | null }>(req: Request, lottery: T): T {
   const raw = lottery.imageUrl;
-  if (!raw || typeof raw !== 'string' || (raw as string).trim() === '') {
-    return lottery;
+  if (!raw || typeof raw !== 'string' || !raw.trim()) return lottery;
+  let url = raw.trim().replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
+  if (url.startsWith('http://') || url.startsWith('https://')) return { ...lottery, imageUrl: url };
+  const pathname = toForwardSlashPath(url);
+  if (pathname.startsWith(REWARDS_PATH_PREFIX)) {
+    const origin = buildAbsoluteUrl(req, '').replace(/\/+$/, '');
+    const absolute = `${origin}/api/v1/rewards/file?path=${encodeURIComponent(pathname)}`;
+    return { ...lottery, imageUrl: absolute };
   }
-  let url = (raw as string).trim();
-  url = url.replace(/\/upload\//g, '/uploads/').replace(/^\/upload(\/|$)/, '/uploads$1');
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return { ...lottery, imageUrl: url };
-  }
-  const pathname = url.replace(/^\/+/, '');
-  if (hasBlobToken() && pathname.startsWith('uploads/rewards/')) {
-    return { ...lottery, imageUrl: buildAbsoluteUrl(req, `/api/v1/rewards/file?path=${encodeURIComponent(pathname)}`) };
-  }
-  const absolute = buildAbsoluteUrl(req, url.startsWith('/') ? url : `/${url}`);
-  return { ...lottery, imageUrl: absolute };
+  return { ...lottery, imageUrl: buildAbsoluteUrl(req, url.startsWith('/') ? url : `/${url}`) };
 }
 
 type ChallengeRaw = Awaited<ReturnType<typeof listChallenges>>[number];
@@ -40,21 +40,19 @@ export const getRewardHistory = asyncHandler(async (req: Request, res: Response)
 export const getLotteries = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.sub;
   const lotteries = await getActiveLotteriesForRewards(userId);
-  const data = lotteries.map((l) => normalizeLotteryImagePath(req, l));
-  sendSuccess(res, data);
+  sendSuccess(res, lotteries.map((l) => normalizeLotteryImageUrl(req, l)));
 });
 
 export const getLotteriesForHome = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.sub;
   const lotteries = await getActiveLotteriesForHome(userId);
-  const data = lotteries.map((l) => normalizeLotteryImagePath(req, l));
-  sendSuccess(res, data);
+  sendSuccess(res, lotteries.map((l) => normalizeLotteryImageUrl(req, l)));
 });
 
 export const getLotteryByIdHandler = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.sub;
   const lottery = await getLotteryById(req.params.id, userId);
-  sendSuccess(res, normalizeLotteryImagePath(req, lottery));
+  sendSuccess(res, normalizeLotteryImageUrl(req, lottery));
 });
 
 export const joinLotteryHandler = asyncHandler(async (req: Request, res: Response) => {

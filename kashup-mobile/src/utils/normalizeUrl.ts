@@ -9,6 +9,7 @@ import { apiOrigin, getBlobProxyBaseUrl } from '../config/runtime';
 
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/400x300/F5F5F5/CCCCCC?text=Image+non+disponible';
 const BLOB_HOST = 'blob.vercel-storage.com';
+const REWARDS_PATH_PREFIX = 'uploads/rewards/';
 
 /**
  * Si l'URL pointe vers un Blob Vercel (store privé), retourne l'URL du proxy API.
@@ -28,12 +29,12 @@ function fixUploadPath(url: string): string {
 }
 
 /**
- * Normalise une URL d'image
- * @param imagePath - Chemin de l'image (peut être null, undefined, URL complète, ou chemin relatif)
- * @returns URL complète normalisée ou placeholder
+ * Normalise une URL d'image (même logique que pour les offres).
+ * - URL Blob → proxy API /blob?url=...
+ * - Chemin uploads/rewards/... → proxy API /rewards/file?path=... (loteries, comme offres côté serveur)
+ * - Autre chemin /uploads/... → apiOrigin + path
  */
 export function normalizeImageUrl(imagePath: string | null | undefined): string {
-  // Si null ou undefined, retourner placeholder
   if (!imagePath || imagePath.trim() === '') {
     return PLACEHOLDER_IMAGE;
   }
@@ -41,18 +42,21 @@ export function normalizeImageUrl(imagePath: string | null | undefined): string 
   let trimmed = imagePath.trim();
   trimmed = fixUploadPath(trimmed);
 
-  // Si déjà une URL complète (http/https) : utiliser le proxy pour les Blob privés
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return proxyBlobUrlIfNeeded(trimmed);
   }
 
-  // Si commence par "/uploads/" ou "/", construire l'URL complète
+  const pathNoLeadingSlash = trimmed.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (pathNoLeadingSlash.startsWith(REWARDS_PATH_PREFIX)) {
+    const base = getBlobProxyBaseUrl();
+    return `${base}/rewards/file?path=${encodeURIComponent(pathNoLeadingSlash)}`;
+  }
+
   if (trimmed.startsWith('/uploads/') || trimmed.startsWith('/')) {
     const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
     return `${apiOrigin}${cleanPath}`;
   }
 
-  // Sinon, traiter comme un chemin relatif
   return `${apiOrigin}/${trimmed}`;
 }
 

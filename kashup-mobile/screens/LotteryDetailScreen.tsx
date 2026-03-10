@@ -4,6 +4,8 @@ import {
   Alert,
   Animated,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,6 +28,9 @@ import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import { TabScreenHeader, TAB_HEADER_HEIGHT, TAB_HEADER_TOP_OFFSET } from '@/src/components/TabScreenHeader';
 import { useWallet } from '@/src/hooks/useWallet';
 import { useRewards } from '@/src/hooks/useRewards';
+
+/** Marge bas pour que le défilement s'arrête au-dessus du bandeau (tab bar). */
+const BOTTOM_TAB_AREA = 90;
 
 type LotteryRoute = RouteProp<RewardsStackParamList, 'LotteryDetail'>;
 
@@ -182,29 +187,41 @@ export default function LotteryDetailScreen({ route }: Props) {
   const soldOut = lottery.isTicketStockLimited && (lottery.ticketsRemaining ?? 0) <= 0;
   const canParticipate = !soldOut && lottery.status === 'active';
 
-  const headerPaddingTop = Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + 15;
+  const headerPaddingTop = Math.max(0, insets.top - 36) + TAB_HEADER_TOP_OFFSET + TAB_HEADER_HEIGHT + spacing.md;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <LinearGradient
-        colors={[colors.slateBackgroundLight, colors.slateBackground]}
-        style={StyleSheet.absoluteFill}
-      />
-      <TabScreenHeader
-        title="Loterie"
-        scrollY={scrollY}
-        onBackPress={() => navigation.goBack()}
-        onNotificationPress={handleNotificationPress}
-        onProfilePress={handleProfilePress}
-        unreadCount={unreadCount}
-        cashback={cashback}
-        points={points}
-        showPillsRow
-      />
-      <Animated.ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: headerPaddingTop }]}
-        showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        <LinearGradient
+          colors={[colors.slateBackgroundLight, colors.slateBackground]}
+          style={StyleSheet.absoluteFill}
+        />
+        <TabScreenHeader
+          title="Loterie"
+          scrollY={scrollY}
+          onBackPress={() => navigation.goBack()}
+          onNotificationPress={handleNotificationPress}
+          onProfilePress={handleProfilePress}
+          unreadCount={unreadCount}
+          cashback={cashback}
+          points={points}
+          showPillsRow
+          solidBackground
+        />
+        <Animated.ScrollView
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: headerPaddingTop,
+              paddingBottom: Math.max(spacing.xl * 2, insets.bottom + BOTTOM_TAB_AREA),
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
         )}
@@ -295,7 +312,7 @@ export default function LotteryDetailScreen({ route }: Props) {
               {joining ? (
                 <ActivityIndicator size="small" color={colors.white} />
               ) : (
-                <Text style={styles.ticketPrimaryText}>Acheter mes tickets</Text>
+                <Text style={styles.ticketPrimaryText}>Obtenir mes tickets</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -317,6 +334,7 @@ export default function LotteryDetailScreen({ route }: Props) {
           ))}
         </View>
       </Animated.ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

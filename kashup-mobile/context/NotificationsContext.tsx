@@ -91,7 +91,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         data.map((notif) => ({
           id: notif.id,
           title: notif.title,
-          description: notif.description,
+          description: notif.description ?? (notif as { body?: string }).body ?? '',
           category: notif.category,
           date: formatRemoteDate(notif.date),
           read: notif.read,

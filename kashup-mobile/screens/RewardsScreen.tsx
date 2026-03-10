@@ -6,6 +6,7 @@ import {
   Image,
   ImageBackground,
   Linking,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -61,6 +62,35 @@ const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 /** Marge bas pour défilement au-dessus du bandeau (tab bar) */
 const BOTTOM_TAB_AREA = 90;
 
+type ModuleInfoKey = 'lotteries' | 'challenges' | 'boosts' | 'badges' | 'games';
+const MODULE_INFO: Record<ModuleInfoKey, { title: string; aQuoiCaSert: string; commentCaMarche: string }> = {
+  lotteries: {
+    title: 'Loteries',
+    aQuoiCaSert: 'Les loteries vous permettent de tenter votre chance pour gagner des lots en utilisant vos points. Chaque ticket coûte des points ; plus vous en prenez, plus vous avez de chances de gagner.',
+    commentCaMarche: "Choisissez une loterie, achetez des tickets avec vos points. À la date du tirage, les gagnants sont tirés au sort. Vos tickets s'affichent sur chaque loterie.",
+  },
+  challenges: {
+    title: 'Challenges & badges',
+    aQuoiCaSert: 'Les challenges et badges vous permettent de gagner des points en réalisant des actions (parrainages, achats, connexion, etc.).',
+    commentCaMarche: "Consultez les défis par catégorie, réalisez les actions demandées. Votre progression et les points gagnés s'affichent ici.",
+  },
+  boosts: {
+    title: 'Boosts',
+    aQuoiCaSert: 'Les boosts augmentent temporairement votre cashback (multiplicateur ou cible partenaire / catégorie).',
+    commentCaMarche: "Achetez un boost avec vos points dans la boutique, activez-le. Il reste actif jusqu'à sa date de fin. Consultez « Mes boosts » pour voir ceux en cours.",
+  },
+  badges: {
+    title: 'Mes badges',
+    aQuoiCaSert: 'Les badges récompensent votre engagement : achats chez les partenaires, participation aux challenges, parrainages, etc. Ils valorisent votre fidélité et votre impact local.',
+    commentCaMarche: "Débloquez des badges en réalisant les actions demandées (défis, achats, connexion). Votre progression s'affiche sur chaque badge. Consultez « Mes badges » pour voir ceux débloqués et ceux en cours.",
+  },
+  games: {
+    title: 'Jeux interactifs',
+    aQuoiCaSert: "Gagner du cashback et des points en jouant à des parcours dynamiques et jeux de hasard. KashUP s'associe à Drimify pour proposer ces expériences.",
+    commentCaMarche: 'Lancez une expérience depuis la liste (parcours dynamiques, jeux de hasard ou autres). Selon le jeu, vous cumulez du cashback ou des récompenses.',
+  },
+};
+
 export default function RewardsScreen() {
   const [activeTab, setActiveTab] = useState<RewardTab>('history');
   const [boostView, setBoostView] = useState<'list' | 'shop'>('list');
@@ -68,6 +98,7 @@ export default function RewardsScreen() {
   const [games, setGames] = useState<DrimifyGame[]>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState<string | null>(null);
+  const [moduleInfoModal, setModuleInfoModal] = useState<ModuleInfoKey | null>(null);
   const navigation = useNavigation<NativeStackNavigationProp<RewardsStackParamList>>();
   const route = useRoute<RouteProp<RewardsStackParamList, 'RewardsHome'>>();
   const insets = useSafeAreaInsets();
@@ -237,6 +268,10 @@ export default function RewardsScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      <TouchableOpacity onPress={() => setModuleInfoModal('lotteries')} style={[styles.moduleInfoTriggerUnderTitle, { marginTop: spacing.xs + 4 }]}>
+        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+        <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
+      </TouchableOpacity>
       {(rewardsLoading || lotteriesLoading) ? (
         <ActivityIndicator color={colors.textSecondary} />
       ) : lotteries.length === 0 ? (
@@ -322,6 +357,10 @@ export default function RewardsScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      <TouchableOpacity onPress={() => setModuleInfoModal('challenges')} style={styles.moduleInfoTriggerUnderTitle}>
+        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+        <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
+      </TouchableOpacity>
       {rewardsLoading ? (
         <ActivityIndicator color={colors.primaryPurple} />
       ) : categoriesList.length > 0 ? (
@@ -414,6 +453,10 @@ export default function RewardsScreen() {
           })}
         </View>
       </View>
+      <TouchableOpacity onPress={() => setModuleInfoModal('boosts')} style={styles.moduleInfoTrigger}>
+        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+        <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
+      </TouchableOpacity>
 
       {boostView === 'list' ? (
         activeBoosts.length === 0 ? (
@@ -481,6 +524,10 @@ export default function RewardsScreen() {
   const renderBadges = () => (
     <View style={styles.sectionLotteries}>
       <Text style={styles.sectionTitle}>Mes badges</Text>
+      <TouchableOpacity onPress={() => setModuleInfoModal('badges')} style={[styles.moduleInfoTriggerUnderTitle, { marginTop: spacing.xs + 4 }]}>
+        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+        <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
+      </TouchableOpacity>
       {badgeEntries.length === 0 ? (
         <Text style={styles.placeholderText}>Aucun badge disponible pour le moment.</Text>
       ) : (
@@ -578,10 +625,13 @@ export default function RewardsScreen() {
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Jeux interactifs</Text>
-        <Text style={styles.sectionSubtitle}>
-          KashUP s’associe à Drimify pour proposer des parcours dynamiques et des jeux de hasard avec cashback à la clé.
-        </Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Jeux interactifs</Text>
+          <TouchableOpacity onPress={() => setModuleInfoModal('games')} style={styles.moduleInfoTrigger}>
+            <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+            <Text style={styles.moduleInfoTriggerText}>À propos</Text>
+          </TouchableOpacity>
+        </View>
         {gamesLoading && (
           <View style={styles.centerRow}>
             <ActivityIndicator color={colors.primaryPurple} />
@@ -736,6 +786,36 @@ export default function RewardsScreen() {
 
         {renderContent()}
       </AnimatedScrollView>
+
+      <Modal
+        visible={moduleInfoModal != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModuleInfoModal(null)}>
+        <TouchableOpacity
+          style={styles.moduleInfoModalOverlay}
+          activeOpacity={1}
+          onPress={() => setModuleInfoModal(null)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={styles.moduleInfoModalBox}>
+            {moduleInfoModal != null && (
+              <>
+                <View style={styles.moduleInfoModalHeader}>
+                  <Text style={styles.moduleInfoModalTitle}>{MODULE_INFO[moduleInfoModal].title}</Text>
+                  <TouchableOpacity onPress={() => setModuleInfoModal(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Ionicons name="close" size={28} color={colors.textMain} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.moduleInfoModalScroll} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.moduleIntroTitle}>À quoi ça sert</Text>
+                  <Text style={styles.moduleIntroBody}>{MODULE_INFO[moduleInfoModal].aQuoiCaSert}</Text>
+                  <Text style={styles.moduleIntroTitle}>Comment ça marche</Text>
+                  <Text style={[styles.moduleIntroBody, { marginBottom: 0 }]}>{MODULE_INFO[moduleInfoModal].commentCaMarche}</Text>
+                </ScrollView>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -862,6 +942,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  sectionHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  moduleInfoTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  moduleInfoTriggerUnderTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  moduleInfoTriggerText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -881,6 +983,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
+  },
+  moduleIntro: {
+    backgroundColor: colors.greyLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  moduleIntroTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMain,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs / 2,
+  },
+  moduleIntroBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  moduleInfoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  moduleInfoModalBox: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    maxWidth: '100%',
+    maxHeight: '80%',
+    width: 340,
+  },
+  moduleInfoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  moduleInfoModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textMain,
+  },
+  moduleInfoModalScroll: {
+    maxHeight: 320,
   },
   centerRow: {
     flexDirection: 'row',

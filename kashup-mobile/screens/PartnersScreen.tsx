@@ -12,8 +12,10 @@ import {
   Image,
   ImageBackground,
   ImageSourcePropType,
+  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -122,9 +124,12 @@ const PARTNERS_OFFER_CARD_WIDTH = 280;
 const REFERENCE_POINT = { latitude: 14.616, longitude: -61.058 };
 /** Hauteur bandeau bas (tab bar) pour positionner le premier partenaire au-dessus */
 const BOTTOM_TAB_AREA = 90;
-/** Hauteur approximative titre de section + première carte partenaire (pour scroll ciblé) */
+/** Hauteur approximative titre de section (pour scroll ciblé) */
 const SECTION_HEADER_APPROX = 32;
-const PARTNER_CARD_APPROX = 110;
+/** Hauteur approximative d'une carte partenaire (logo + infos) */
+const PARTNER_CARD_APPROX = 140;
+/** Marge sous la première carte pour qu'elle reste clairement au-dessus du bandeau */
+const FIRST_CARD_BOTTOM_MARGIN = 24;
 
 const toRad = (value: number) => (value * Math.PI) / 180;
 
@@ -186,15 +191,20 @@ export default function PartnersScreen() {
       scrollToFirstPartnerRef.current = false;
       const { y: firstSectionY } = e.nativeEvent.layout;
       const windowHeight = Dimensions.get('window').height;
+      // Position Y (en haut du viewport) où doit apparaître le début de la première carte :
+      // pour que toute la carte + marge soit au-dessus du bandeau (tab bar).
       const visibleTopForFirstCard =
-        windowHeight - insets.bottom - BOTTOM_TAB_AREA - PARTNER_CARD_APPROX;
+        windowHeight - insets.bottom - BOTTOM_TAB_AREA - PARTNER_CARD_APPROX - FIRST_CARD_BOTTOM_MARGIN;
       const targetScrollY = Math.max(
         0,
         firstSectionY + SECTION_HEADER_APPROX - visibleTopForFirstCard
       );
       setTimeout(() => {
-        (scrollRef.current as any)?.scrollTo?.({ y: targetScrollY, animated: true });
-      }, 100);
+        const ref = scrollRef.current as ScrollView | null;
+        if (ref && typeof (ref as any).scrollTo === 'function') {
+          (ref as any).scrollTo({ y: targetScrollY, animated: true });
+        }
+      }, 150);
     },
     [insets.bottom, selectedCategoryId]
   );
@@ -419,11 +429,15 @@ export default function PartnersScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-      <LinearGradient
-        colors={[colors.slateBackgroundLight, colors.slateBackground]}
-        style={styles.pageGradient}
-      />
-      <TabScreenHeader
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        <LinearGradient
+          colors={[colors.slateBackgroundLight, colors.slateBackground]}
+          style={styles.pageGradient}
+        />
+        <TabScreenHeader
         scrollY={scrollY}
         onNotificationPress={handleNotificationPress}
         onProfilePress={handleProfilePress}
@@ -443,6 +457,7 @@ export default function PartnersScreen() {
         style={styles.listFill}
         contentContainerStyle={[styles.listContent, { paddingTop: 0 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
@@ -707,7 +722,7 @@ export default function PartnersScreen() {
         boostedOnly={boostedOnly}
         onBoostedOnlyChange={setBoostedOnly}
       />
-
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -6,7 +6,9 @@ import {
   Animated,
   Image,
   ImageBackground,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -287,16 +289,21 @@ export default function BoxUpDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-      <LinearGradient
-        colors={[colors.slateBackgroundLight, colors.slateBackground]}
-        style={StyleSheet.absoluteFill}
-      />
-      {renderBandeau()}
-      <AnimatedScrollView
-        style={styles.scrollFill}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        <LinearGradient
+          colors={[colors.slateBackgroundLight, colors.slateBackground]}
+          style={StyleSheet.absoluteFill}
+        />
+        {renderBandeau()}
+        <AnimatedScrollView
+          style={styles.scrollFill}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
         )}>
@@ -563,6 +570,7 @@ export default function BoxUpDetailScreen() {
           ) : null}
         </View>
       </AnimatedScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

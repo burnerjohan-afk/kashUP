@@ -9,6 +9,8 @@ import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -162,7 +164,15 @@ export default function KYCVerificationScreen() {
         colors={[colors.slateBackgroundLight, colors.slateBackground]}
         style={StyleSheet.absoluteFill}
       />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={colors.textMain} />
@@ -170,7 +180,7 @@ export default function KYCVerificationScreen() {
           <Text style={styles.title}>Vérification d'identité</Text>
         </View>
 
-        <View style={styles.infoCard}>
+          <View style={styles.infoCard}>
           <Ionicons name="shield-checkmark" size={24} color={colors.primaryBlue} />
           <Text style={styles.infoText}>
             Conformément à la réglementation DSP2, une vérification d'identité (KYC) est requise pour certaines
@@ -283,7 +293,8 @@ export default function KYCVerificationScreen() {
             </>
           )}
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
