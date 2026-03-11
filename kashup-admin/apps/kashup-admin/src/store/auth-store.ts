@@ -8,6 +8,8 @@ type AuthState = {
   user?: AdminUser;
   roles: UserRole[];
   isAuthenticated: boolean;
+  /** False jusqu'à ce que persist ait rechargé le state depuis localStorage (évite redirection login au rechargement). */
+  hasHydrated: boolean;
   setCredentials: (payload: {
     accessToken: string;
     refreshToken: string;
@@ -25,6 +27,7 @@ export const useAuthStore = create<AuthState>()(
       user: undefined,
       roles: [],
       isAuthenticated: false,
+      hasHydrated: false,
       setCredentials: ({ accessToken, refreshToken, user }) =>
         set({
           accessToken,
@@ -80,6 +83,13 @@ export const useAuthStore = create<AuthState>()(
         roles: state.roles,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state, err) => {
+        if (!err) {
+          useAuthStore.setState({ hasHydrated: true });
+        } else {
+          useAuthStore.setState({ hasHydrated: true });
+        }
+      },
     },
   ),
 );

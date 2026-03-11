@@ -25,8 +25,8 @@ export const DataTable = <TData,>({
   });
 
   return (
-    <div className="overflow-hidden rounded-xl border border-ink/5 bg-white">
-      <table className="w-full">
+    <div className="min-w-0 overflow-x-auto rounded-xl border border-ink/5 bg-white">
+      <table className="w-full min-w-[600px]">
         <thead className="bg-ink/5 text-left text-xs font-semibold uppercase tracking-wide text-ink/60">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
