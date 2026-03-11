@@ -155,7 +155,7 @@ export const DashboardPage = () => {
   const hasIncompleteData = !kpis || typeof kpis !== 'object';
 
   return (
-    <div className="space-y-8">
+    <div className="min-w-0 space-y-8">
       {hasIncompleteData && import.meta.env.DEV && (
         <div className="rounded-lg bg-warning/10 border border-warning/20 p-4">
           <p className="text-sm text-warning font-medium mb-2">

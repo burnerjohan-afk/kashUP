@@ -28,8 +28,8 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
   const { toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-ink/5 bg-surface/80 px-4 py-3 backdrop-blur sm:px-6 lg:px-8 lg:py-4">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="sticky top-0 z-30 flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-ink/5 bg-surface/80 px-4 py-3 backdrop-blur sm:px-6 lg:px-8 lg:py-4">
+      <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
         {/* Menu hamburger : visible sous 1280px (portable, tablette), zone de touch 44px */}
         <button
           type="button"
@@ -44,10 +44,10 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
           <h1 className="truncate text-lg font-semibold text-ink sm:text-xl lg:text-2xl">{title}</h1>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <div className="relative hidden sm:block">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        <div className="relative hidden sm:block sm:w-36 lg:w-52 xl:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/40" />
-          <Input className="w-40 pl-9 lg:w-64" placeholder="Recherche (Ctrl+K)" />
+          <Input className="w-full min-w-0 pl-9" placeholder="Recherche (Ctrl+K)" />
         </div>
         <CommandMenu />
         <Button variant="secondary" className="hidden gap-1 text-xs sm:inline-flex" onClick={toggleTheme}>
