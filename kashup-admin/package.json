@@ -1,0 +1,22 @@
+{
+  "name": "kashup-admin-root",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Root package.json for kashup-admin monorepo",
+  "scripts": {
+    "start": "npm --prefix apps/kashup-admin run dev",
+    "dev": "npm --prefix apps/kashup-admin run dev",
+    "build": "npm --prefix apps/kashup-admin run build",
+    "preview": "npm --prefix apps/kashup-admin run preview",
+    "lint": "npm --prefix apps/kashup-admin run lint",
+    "typecheck": "npm --prefix apps/kashup-admin run typecheck",
+    "test": "npm --prefix apps/kashup-admin run test",
+    "test:watch": "npm --prefix apps/kashup-admin run test:watch",
+    "test:cov": "npm --prefix apps/kashup-admin run test:cov",
+    "install:all": "npm --prefix apps/kashup-admin install"
+  },
+  "workspaces": [
+    "apps/*"
+  ]
+}
+
