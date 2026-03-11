@@ -18,6 +18,7 @@ import {
 } from '../api';
 import type { Association } from '@/types/entities';
 import type { AssociationFormInput } from '../api';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const AssociationsTab = () => {
   const queryClient = useQueryClient();
@@ -246,7 +247,7 @@ export const AssociationsTab = () => {
             <div className="space-y-3">
               {association.imageUrl && (
                 <img 
-                  src={association.imageUrl} 
+                  src={normalizeImageUrl(association.imageUrl) ?? association.imageUrl} 
                   alt={association.nom} 
                   className="h-32 w-full rounded-lg object-cover"
                   onError={(e) => {

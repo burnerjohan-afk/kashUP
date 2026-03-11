@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { fetchPartnerById, updatePartner } from '../api';
 import type { PartnerFormInput } from '../api';
 import { formatDate } from '@/lib/utils/format';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 import { PartnerTabs } from '../components/partner-tabs';
 
 export const PartnerDetailPage = () => {
@@ -187,7 +188,7 @@ export const PartnerDetailPage = () => {
           {partner.logoUrl && (
             <Card title="Logo">
               <img 
-                src={partner.logoUrl} 
+                src={normalizeImageUrl(partner.logoUrl) ?? partner.logoUrl} 
                 alt={partner.name} 
                 className="h-32 w-32 rounded-lg object-contain"
                 onError={(e) => {

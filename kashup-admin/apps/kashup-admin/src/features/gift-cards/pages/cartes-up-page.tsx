@@ -17,6 +17,8 @@ import {
 import type { CarteUpLibre, CarteUpPredefinie } from '@/types/gifts';
 import { Conditions } from '@/components/conditions';
 import { HowItWorks } from '@/components/how-it-works';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
+
 export const CartesUpPage = () => {
   const queryClient = useQueryClient();
   const [showLibreForm, setShowLibreForm] = useState(false);
@@ -105,7 +107,7 @@ export const CartesUpPage = () => {
                 <div className="space-y-3">
                   {carte.imageUrl && (
                     <img
-                      src={carte.imageUrl}
+                      src={normalizeImageUrl(carte.imageUrl) ?? carte.imageUrl}
                       alt={carte.nom}
                       className="h-32 w-full rounded-lg object-cover"
                       onError={(e) => {
@@ -207,7 +209,7 @@ export const CartesUpPage = () => {
                 <div className="space-y-3">
                   {carte.imageUrl && (
                     <img
-                      src={carte.imageUrl}
+                      src={normalizeImageUrl(carte.imageUrl) ?? carte.imageUrl}
                       alt={carte.nom}
                       className="h-32 w-full rounded-lg object-cover"
                       onError={(e) => {

@@ -7,16 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { fetchPartners } from '@/features/partners/api';
-import { API_CONFIG } from '@/config/api';
 import { createCarteUpPredefinie, updateCarteUpPredefinie } from '../api-cartes-up';
 import type { CarteUpPredefinie } from '@/types/gifts';
-
-const buildImageUrl = (url: string | null | undefined): string | null => {
-  if (!url || !url.trim()) return null;
-  if (url.startsWith('http')) return url;
-  const base = API_CONFIG.baseOrigin?.replace(/\/$/, '') || '';
-  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
-};
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 type FormState = {
   nom: string;
@@ -77,7 +70,7 @@ export const CarteUpPredefinieForm = ({ carte, onSuccess }: CarteUpPredefinieFor
         status: (carte.status as 'active' | 'inactive') ?? 'active',
         imageUrl: carte.imageUrl ?? undefined,
       });
-      setImagePreview(carte.imageUrl ? buildImageUrl(carte.imageUrl) : null);
+      setImagePreview(carte.imageUrl ? normalizeImageUrl(carte.imageUrl) : null);
     } else {
       setForm(defaultForm);
       setImagePreview(null);
@@ -254,10 +247,10 @@ export const CarteUpPredefinieForm = ({ carte, onSuccess }: CarteUpPredefinieFor
           <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}>
             Choisir une image
           </Button>
-          {(imagePreview || (form.imageUrl && buildImageUrl(form.imageUrl))) && (
+          {(imagePreview || (form.imageUrl && normalizeImageUrl(form.imageUrl))) && (
             <div className="mt-2">
               <img
-                src={imagePreview || buildImageUrl(form.imageUrl ?? '') || ''}
+                src={imagePreview || normalizeImageUrl(form.imageUrl ?? '') || ''}
                 alt="Aperçu de l'image de la carte"
                 className="h-32 w-full rounded-lg object-cover border border-ink/10"
                 onError={(e) => {

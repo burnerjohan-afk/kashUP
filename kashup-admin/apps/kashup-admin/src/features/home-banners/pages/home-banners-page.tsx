@@ -12,14 +12,7 @@ import {
   type HomeBanner,
   type HomeBannerFormInput,
 } from '../api';
-import { API_CONFIG } from '@/config/api';
-
-const buildImageUrl = (url: string | null) => {
-  if (!url) return null;
-  if (url.startsWith('http')) return url;
-  const base = API_CONFIG.baseOrigin?.replace(/\/$/, '') || '';
-  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
-};
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const HomeBannersPage = () => {
   const queryClient = useQueryClient();
@@ -126,7 +119,7 @@ export const HomeBannersPage = () => {
       position: b.position,
       active: b.active,
     });
-    setImagePreview(b.imageUrl ? buildImageUrl(b.imageUrl) : null);
+    setImagePreview(b.imageUrl ? normalizeImageUrl(b.imageUrl) : null);
     if (videoInputRef.current) videoInputRef.current.value = '';
   };
 
@@ -209,7 +202,7 @@ export const HomeBannersPage = () => {
             {(imagePreview || form.imageUrl) && (
               <div className="mt-2">
                 <img
-                  src={imagePreview || buildImageUrl(form.imageUrl ?? '') || ''}
+                  src={imagePreview || normalizeImageUrl(form.imageUrl ?? '') || ''}
                   alt="Aperçu"
                   className="h-24 w-auto rounded-lg border border-ink/10 object-cover"
                 />
@@ -269,7 +262,7 @@ export const HomeBannersPage = () => {
               >
                 {b.imageUrl && (
                   <img
-                    src={buildImageUrl(b.imageUrl) ?? ''}
+                    src={normalizeImageUrl(b.imageUrl) ?? ''}
                     alt={b.title ?? 'Bannière'}
                     className="h-14 w-24 rounded object-cover"
                   />

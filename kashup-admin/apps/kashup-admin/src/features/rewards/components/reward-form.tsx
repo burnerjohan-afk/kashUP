@@ -21,6 +21,7 @@ import {
 } from '../api';
 import type { RewardFormInput } from '../api';
 import { fetchPartners } from '@/features/partners/api';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 type RewardFormProps = {
   type: 'boost' | 'badge' | 'lottery' | 'challenge';
@@ -725,7 +726,7 @@ export const RewardForm = ({ type, reward, onSuccess }: RewardFormProps) => {
           <label className="mb-1 block text-xs uppercase text-ink/50">Image</label>
           <Input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} />
           {imagePreview && (
-            <img src={imagePreview} alt="Preview" className="mt-2 h-32 w-full rounded-lg object-cover" />
+            <img src={normalizeImageUrl(imagePreview) ?? imagePreview} alt="Preview" className="mt-2 h-32 w-full rounded-lg object-cover" />
           )}
         </div>
 

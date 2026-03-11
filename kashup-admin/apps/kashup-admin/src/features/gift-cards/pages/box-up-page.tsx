@@ -8,6 +8,7 @@ import { BoxUpForm } from '../components/box-up-form';
 import { fetchBoxUps, deleteBoxUp } from '../api-box-up';
 import type { BoxUp } from '@/types/gifts';
 import { HowItWorks } from '@/components/how-it-works';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const BoxUpPage = () => {
   const queryClient = useQueryClient();
@@ -63,7 +64,7 @@ export const BoxUpPage = () => {
             <div className="space-y-3">
               {box.imageUrl && (
                 <img
-                  src={box.imageUrl}
+                  src={normalizeImageUrl(box.imageUrl) ?? box.imageUrl}
                   alt={box.nom}
                   className="h-32 w-full rounded-lg object-cover"
                   onError={(e) => {

@@ -8,6 +8,7 @@ import { HowItWorks } from '@/components/how-it-works';
 import { Conditions } from '@/components/conditions';
 import { fetchRewardsByType } from '../api';
 import type { Reward } from '@/types/entities';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const BadgesTab = () => {
   const [showForm, setShowForm] = useState(false);
@@ -61,7 +62,7 @@ export const BadgesTab = () => {
             <div className="space-y-3">
               {reward.imageUrl && (
                 <img 
-                  src={reward.imageUrl} 
+                  src={normalizeImageUrl(reward.imageUrl) ?? reward.imageUrl} 
                   alt={reward.title} 
                   className="h-32 w-full rounded-lg object-cover"
                   onError={(e) => {

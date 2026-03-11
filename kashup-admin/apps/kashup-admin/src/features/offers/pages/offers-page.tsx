@@ -16,6 +16,7 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/format';
 import { OfferCountdown } from '../components/offer-countdown';
 import { HowItWorks } from '@/components/how-it-works';
 import { Conditions } from '@/components/conditions';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const OffersPage = () => {
   const [filters, setFilters] = useState({ status: 'all' });
@@ -370,7 +371,7 @@ const OfferRow = ({ offer, partners, onUpdate }: OfferRowProps) => {
       <div className="flex items-start gap-4">
         {offer.imageUrl && (
           <img
-            src={offer.imageUrl}
+            src={normalizeImageUrl(offer.imageUrl) ?? offer.imageUrl}
             alt={offer.title}
             className="h-20 w-20 rounded-lg object-cover"
             onError={(e) => {
@@ -380,7 +381,7 @@ const OfferRow = ({ offer, partners, onUpdate }: OfferRowProps) => {
         )}
         {offer.partnerLogoUrl && !offer.imageUrl && (
           <img
-            src={offer.partnerLogoUrl}
+            src={normalizeImageUrl(offer.partnerLogoUrl) ?? offer.partnerLogoUrl}
             alt={offer.partnerName || 'Partenaire'}
             className="h-20 w-20 rounded-lg object-contain"
             onError={(e) => {

@@ -12,6 +12,7 @@ import { createOffer, fetchCurrentOffers, offerFormSchema } from '@/features/off
 import type { OfferFormInput } from '@/features/offers/api';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/format';
 import { OfferCountdown } from '@/features/offers/components/offer-countdown';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 type PartnerOffersProps = {
   partnerId: string;
@@ -197,7 +198,7 @@ const OfferRow = ({ offer, partnerLogoUrl }: { offer: Offer; partnerLogoUrl?: st
       <div className="flex items-start gap-4">
         {offer.imageUrl && (
           <img 
-            src={offer.imageUrl} 
+            src={normalizeImageUrl(offer.imageUrl) ?? offer.imageUrl} 
             alt={offer.title} 
             className="h-20 w-20 rounded-lg object-cover"
             onError={(e) => {
@@ -207,7 +208,7 @@ const OfferRow = ({ offer, partnerLogoUrl }: { offer: Offer; partnerLogoUrl?: st
         )}
         {partnerLogoUrl && !offer.imageUrl && (
           <img 
-            src={partnerLogoUrl} 
+            src={normalizeImageUrl(partnerLogoUrl) ?? partnerLogoUrl} 
             alt="Partenaire" 
             className="h-20 w-20 rounded-lg object-contain"
             onError={(e) => {

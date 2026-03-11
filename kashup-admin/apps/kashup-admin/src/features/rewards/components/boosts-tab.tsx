@@ -10,6 +10,7 @@ import { fetchRewardsByType } from '../api';
 import type { Reward } from '@/types/entities';
 import { fetchPartners } from '@/features/partners/api';
 import { formatDate } from '@/lib/utils/format';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const BoostsTab = () => {
   const [showForm, setShowForm] = useState(false);
@@ -89,7 +90,7 @@ export const BoostsTab = () => {
               {reward.imageUrl && (
                 <div className="mt-4 overflow-hidden rounded-lg border border-ink/5">
                   <img
-                    src={reward.imageUrl}
+                    src={normalizeImageUrl(reward.imageUrl) ?? reward.imageUrl}
                     alt={reward.title}
                     className="h-28 w-full object-cover"
                     onError={(e) => {

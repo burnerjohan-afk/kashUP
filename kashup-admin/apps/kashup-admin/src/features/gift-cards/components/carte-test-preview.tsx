@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPartners } from '@/features/partners/api';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 /** Macarons proposés pour la Carte Sélection UP (dont pastille libre) */
 export const MACARONS_CARTE_SELECTION = [
@@ -218,7 +219,7 @@ export const CarteTestPreview = () => {
               {partenaire?.logoUrl && (
                 <div className="absolute -top-6 right-4 h-14 w-14 overflow-hidden rounded-full border-2 border-white bg-white shadow-md">
                   <img
-                    src={partenaire.logoUrl}
+                    src={normalizeImageUrl(partenaire.logoUrl) ?? partenaire.logoUrl}
                     alt={partenaire.name}
                     className="h-full w-full object-contain"
                   />

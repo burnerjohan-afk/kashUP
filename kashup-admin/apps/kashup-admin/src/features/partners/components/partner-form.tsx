@@ -13,6 +13,7 @@ import type { PartnerFormInput } from '../api';
 import { useState, useEffect } from 'react';
 import { PartnerDocuments } from './partner-documents';
 import { PartnerOffers } from './partner-offers';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 type TerritoryValue = 'martinique' | 'guadeloupe' | 'guyane';
 
@@ -897,7 +898,7 @@ export const PartnerForm = ({ partner, onSubmit, isLoading }: PartnerFormProps) 
               <Input type="file" accept="image/*" onChange={handleLogoChange} />
               {logoPreview && (
                 <img 
-                  src={logoPreview} 
+                  src={normalizeImageUrl(logoPreview) ?? logoPreview} 
                   alt="Logo preview" 
                   className="mt-2 h-24 w-24 rounded-lg object-contain"
                   onError={(e) => {
@@ -1068,7 +1069,7 @@ export const PartnerForm = ({ partner, onSubmit, isLoading }: PartnerFormProps) 
                 {photoPreviews.map((preview, index) => (
                   <div key={`photo-${index}-${preview.substring(0, 20)}`} className="relative">
                     <img
-                      src={preview}
+                      src={normalizeImageUrl(preview) ?? preview}
                       alt={`Photo ${index + 1}`}
                       className="h-24 w-full rounded-lg object-cover"
                       onError={(e) => {

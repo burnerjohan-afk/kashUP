@@ -12,6 +12,7 @@ import { deleteReward, fetchRewardsByType } from '../api';
 import type { Reward } from '@/types/entities';
 import { fetchPartners } from '@/features/partners/api';
 import { formatDate } from '@/lib/utils/format';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 export const LotteriesTab = () => {
   const queryClient = useQueryClient();
@@ -89,7 +90,7 @@ export const LotteriesTab = () => {
             <div className="space-y-3">
               {reward.imageUrl && (
                 <img 
-                  src={reward.imageUrl} 
+                  src={normalizeImageUrl(reward.imageUrl) ?? reward.imageUrl} 
                   alt={reward.title} 
                   className="h-32 w-full rounded-lg object-cover"
                   onError={(e) => {

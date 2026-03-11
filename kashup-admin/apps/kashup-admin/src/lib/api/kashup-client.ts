@@ -58,6 +58,20 @@ export const getApiBaseUrl = (): string => {
 };
 
 /**
+ * Obtient l'origine de l'API (sans /api/v1) pour construire les URLs d'images
+ * Ex: https://api.example.com/api/v1 → https://api.example.com
+ */
+export const getApiBaseOrigin = (): string => {
+  try {
+    const url = getApiBaseUrl();
+    const u = new URL(url);
+    return u.origin;
+  } catch {
+    return API_CONFIG.baseOrigin;
+  }
+};
+
+/**
  * Headers d'authentification JWT
  */
 const getAuthHeaders = (): Record<string, string> => {

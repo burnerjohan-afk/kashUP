@@ -7,16 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { fetchPartners } from '@/features/partners/api';
-import { API_CONFIG } from '@/config/api';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 import { createBoxUp, updateBoxUp, type BoxUpUpdatePayload } from '../api-box-up';
 import type { BoxUp, BoxUpInput, BoxUpPartner } from '@/types/gifts';
 
-const buildImageUrl = (url: string | null | undefined): string | null => {
-  if (!url || !url.trim()) return null;
-  if (url.startsWith('http')) return url;
-  const base = API_CONFIG.baseOrigin?.replace(/\/$/, '') || '';
-  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
-};
 
 type BoxUpFormProps = {
   box?: BoxUp;
@@ -33,7 +27,7 @@ export const BoxUpForm = ({ box, onSuccess }: BoxUpFormProps) => {
 
   useEffect(() => {
     if (box?.imageUrl) {
-      setImagePreview(buildImageUrl(box.imageUrl) ?? null);
+      setImagePreview(normalizeImageUrl(box.imageUrl) ?? null);
     } else {
       setImagePreview(null);
     }
@@ -180,10 +174,10 @@ export const BoxUpForm = ({ box, onSuccess }: BoxUpFormProps) => {
           <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}>
             Choisir une image
           </Button>
-          {(imagePreview || (box?.imageUrl && buildImageUrl(box.imageUrl))) && (
+          {(imagePreview || (box?.imageUrl && normalizeImageUrl(box.imageUrl))) && (
             <div className="mt-2">
               <img
-                src={imagePreview || buildImageUrl(box?.imageUrl ?? '') || ''}
+                src={imagePreview || normalizeImageUrl(box?.imageUrl ?? '') || ''}
                 alt="Aperçu"
                 className="h-32 w-full rounded-lg object-cover border border-ink/10"
                 onError={(e) => {

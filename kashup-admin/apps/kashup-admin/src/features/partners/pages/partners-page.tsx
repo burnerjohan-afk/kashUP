@@ -13,6 +13,7 @@ import { createPartner, fetchPartnerCategories, fetchPartners } from '../api';
 import type { PartnerFormInput, PartnersFilters } from '../api';
 import { PartnerForm } from '../components/partner-form';
 import { ApiError } from '@/lib/api/response';
+import { normalizeImageUrl } from '@/lib/utils/normalizeUrl';
 
 const statusTone = {
   active: 'success',
@@ -292,7 +293,7 @@ export const PartnersPage = () => {
   const onPartnerSubmit = (values: PartnerFormInput) => void createPartnerMutation.mutate(values);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <Card 
         title="Catalogue partenaires" 
         description="Filtres catégorie, territoire, géolocalisation"
@@ -309,7 +310,7 @@ export const PartnersPage = () => {
           </Button>
         }
       >
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Input
             placeholder="Rechercher"
             value={filters.search}
@@ -481,15 +482,15 @@ const PartnerRow = ({ partner, onClick }: { partner: Partner; onClick: () => voi
 
   return (
     <div
-      className="flex cursor-pointer items-center gap-4 rounded-2xl border border-ink/5 p-4 transition-colors hover:border-primary/20 hover:bg-ink/2"
+      className="flex cursor-pointer flex-wrap items-start gap-3 rounded-2xl border border-ink/5 p-4 transition-colors hover:border-primary/20 hover:bg-ink/2 sm:items-center sm:gap-4"
       onClick={onClick}
     >
       {/* Logo ou initiale - toujours affiché même si logoUrl est manquant */}
       {partner.logoUrl ? (
         <img
-          src={partner.logoUrl}
+          src={normalizeImageUrl(partner.logoUrl) ?? partner.logoUrl}
           alt={partnerName}
-          className="h-12 w-12 rounded-lg object-contain bg-ink/5"
+          className="h-12 w-12 shrink-0 rounded-lg object-contain bg-ink/5"
           loading="lazy"
           crossOrigin="anonymous"
           onError={(e) => {
@@ -500,7 +501,7 @@ const PartnerRow = ({ partner, onClick }: { partner: Partner; onClick: () => voi
             // Diagnostiquer le type d'erreur
             if (import.meta.env.DEV) {
               // Essayer de récupérer plus d'informations sur l'erreur
-              fetch(partner.logoUrl, { method: 'HEAD' })
+              fetch(normalizeImageUrl(partner.logoUrl) ?? partner.logoUrl, { method: 'HEAD' })
                 .then((response) => {
                   console.error('❌ Erreur de chargement du logo (diagnostic):', {
                     partnerId: partner.id,
@@ -547,40 +548,37 @@ const PartnerRow = ({ partner, onClick }: { partner: Partner; onClick: () => voi
           }}
         />
       ) : (
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-ink/5 text-xs font-semibold text-ink/50">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-ink/5 text-xs font-semibold text-ink/50">
           {partnerName.charAt(0).toUpperCase()}
         </div>
       )}
 
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          {/* Utiliser directement le nom sans traduction automatique du navigateur */}
-          <p className="font-semibold text-ink" translate="no">{partnerName}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 truncate font-semibold text-ink" translate="no">{partnerName}</p>
           {isIncomplete && (
-            <Badge tone="warning" className="text-xs">
+            <Badge tone="warning" className="shrink-0 text-xs">
               Incomplet
             </Badge>
           )}
         </div>
-        <p className="text-xs text-ink/50">
+        <p className="mt-0.5 truncate text-xs text-ink/50">
           {categoriesDisplay} • {territoryDisplay}
         </p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-4">
         <div className="flex items-center gap-1">
-          {transactionGrowth > 0 && <ArrowUp className="h-4 w-4 text-green-500" />}
-          {transactionGrowth < 0 && <ArrowDown className="h-4 w-4 text-red-500" />}
-          <span className="text-xs text-ink/70">Transactions</span>
+          {transactionGrowth > 0 && <ArrowUp className="h-4 w-4 shrink-0 text-green-500" />}
+          {transactionGrowth < 0 && <ArrowDown className="h-4 w-4 shrink-0 text-red-500" />}
+          <span className="whitespace-nowrap text-xs text-ink/70">Transactions</span>
         </div>
-
         <div className="flex items-center gap-1">
-          {averageBasketGrowth > 0 && <ArrowUp className="h-4 w-4 text-green-500" />}
-          {averageBasketGrowth < 0 && <ArrowDown className="h-4 w-4 text-red-500" />}
-          <span className="text-xs text-ink/70">Panier moyen</span>
+          {averageBasketGrowth > 0 && <ArrowUp className="h-4 w-4 shrink-0 text-green-500" />}
+          {averageBasketGrowth < 0 && <ArrowDown className="h-4 w-4 shrink-0 text-red-500" />}
+          <span className="whitespace-nowrap text-xs text-ink/70">Panier moyen</span>
         </div>
-
-        <Badge tone={statusTone[partner.status || 'pending']}>
+        <Badge tone={statusTone[partner.status || 'pending']} className="shrink-0">
           {partner.status || 'pending'}
         </Badge>
       </div>
