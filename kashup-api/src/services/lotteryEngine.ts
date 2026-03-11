@@ -49,10 +49,11 @@ export async function getActiveLotteries(userId?: string) {
 }
 
 /** Loteries à afficher sur la page d'accueil : toutes celles en période (débutée, non terminée), actives ou à venir.
- *  Tri : date de tirage la plus proche en premier (drawDate asc). */
+ *  Tri : date de tirage la plus proche en premier (drawDate asc).
+ *  Fallback : si aucune en période, renvoyer les dernières non supprimées (actives/upcoming/closed) pour éviter liste vide. */
 export async function getActiveLotteriesForHome(userId?: string) {
   const at = now();
-  const lotteries = await prisma.lottery.findMany({
+  let lotteries = await prisma.lottery.findMany({
     where: {
       deletedAt: null,
       status: { in: ['active', 'upcoming'] },
@@ -64,6 +65,16 @@ export async function getActiveLotteriesForHome(userId?: string) {
     },
     orderBy: { drawDate: 'asc' },
   });
+  if (lotteries.length === 0) {
+    lotteries = await prisma.lottery.findMany({
+      where: { deletedAt: null },
+      include: {
+        partner: { select: { id: true, name: true, logoUrl: true } },
+      },
+      orderBy: { drawDate: 'asc' },
+      take: 50,
+    });
+  }
   if (!userId) {
     return lotteries.map((l) => formatLotteryForApp(l, null));
   }
@@ -77,10 +88,11 @@ export async function getActiveLotteriesForHome(userId?: string) {
   return lotteries.map((l) => formatLotteryForApp(l, byLottery.get(l.id) ?? null));
 }
 
-/** Loteries à afficher sur la page Rewards : en période, actives ou à venir, visibles dans Rewards. */
+/** Loteries à afficher sur la page Rewards : en période, actives ou à venir, visibles dans Rewards.
+ *  Fallback : si aucune, renvoyer les dernières non supprimées (showOnRewards true ou toutes) pour éviter liste vide. */
 export async function getActiveLotteriesForRewards(userId?: string) {
   const at = now();
-  const lotteries = await prisma.lottery.findMany({
+  let lotteries = await prisma.lottery.findMany({
     where: {
       deletedAt: null,
       status: { in: ['active', 'upcoming'] },
@@ -93,6 +105,26 @@ export async function getActiveLotteriesForRewards(userId?: string) {
     },
     orderBy: { drawDate: 'asc' },
   });
+  if (lotteries.length === 0) {
+    lotteries = await prisma.lottery.findMany({
+      where: { deletedAt: null, showOnRewards: true },
+      include: {
+        partner: { select: { id: true, name: true, logoUrl: true } },
+      },
+      orderBy: { drawDate: 'asc' },
+      take: 50,
+    });
+  }
+  if (lotteries.length === 0) {
+    lotteries = await prisma.lottery.findMany({
+      where: { deletedAt: null },
+      include: {
+        partner: { select: { id: true, name: true, logoUrl: true } },
+      },
+      orderBy: { drawDate: 'asc' },
+      take: 50,
+    });
+  }
   if (!userId) {
     return lotteries.map((l) => formatLotteryForApp(l, null));
   }

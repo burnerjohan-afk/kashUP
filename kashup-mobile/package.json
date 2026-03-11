@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "start:lan": "expo start --lan",
+    "start:lan": "node scripts/start-lan-with-host.js",
     "start:lan:host": "node scripts/start-lan-with-host.js",
     "start:offline": "expo start --offline",
     "start:tunnel": "expo start --tunnel",
