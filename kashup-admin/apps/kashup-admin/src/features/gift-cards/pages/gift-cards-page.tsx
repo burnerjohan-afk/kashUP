@@ -7,8 +7,8 @@ export const GiftCardsPage = () => {
   const [activeTab, setActiveTab] = useState<'cartes-up' | 'box-up'>('cartes-up');
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="min-w-0 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-ink">Carte et coffret cadeau</h1>
           <p className="text-sm text-ink/50">Gestion des cartes cadeaux et boxes</p>
@@ -16,7 +16,7 @@ export const GiftCardsPage = () => {
       </div>
 
       <div className="mb-6 border-b border-ink/10">
-        <nav className="flex gap-4">
+        <nav className="flex flex-wrap gap-2 sm:gap-4">
           <button
             onClick={() => setActiveTab('cartes-up')}
             className={cn(

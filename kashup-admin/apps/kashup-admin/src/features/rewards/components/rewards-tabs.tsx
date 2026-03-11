@@ -14,64 +14,27 @@ export const RewardsTabs = ({}: RewardsTabsProps) => {
   const [activeTab, setActiveTab] = useState<'boosts' | 'badges' | 'lotteries' | 'challenges' | 'games'>('boosts');
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-6 border-b border-ink/10">
-        <nav className="flex gap-4">
-          <button
-            onClick={() => setActiveTab('boosts')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              activeTab === 'boosts'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Boosts
-          </button>
-          <button
-            onClick={() => setActiveTab('badges')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              activeTab === 'badges'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Badges
-          </button>
-          <button
-            onClick={() => setActiveTab('lotteries')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              activeTab === 'lotteries'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Loteries
-          </button>
-          <button
-            onClick={() => setActiveTab('challenges')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              activeTab === 'challenges'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Défis
-          </button>
-          <button
-            onClick={() => setActiveTab('games')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              activeTab === 'games'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Jeux
-          </button>
+        <nav className="flex flex-wrap gap-2 sm:gap-4">
+          {(['boosts', 'badges', 'lotteries', 'challenges', 'games'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors sm:px-4',
+                activeTab === tab
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-ink/50 hover:text-ink',
+              )}
+            >
+              {tab === 'boosts' && 'Boosts'}
+              {tab === 'badges' && 'Badges'}
+              {tab === 'lotteries' && 'Loteries'}
+              {tab === 'challenges' && 'Défis'}
+              {tab === 'games' && 'Jeux'}
+            </button>
+          ))}
         </nav>
       </div>
 

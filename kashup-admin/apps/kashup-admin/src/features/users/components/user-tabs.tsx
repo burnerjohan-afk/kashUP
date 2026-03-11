@@ -14,7 +14,7 @@ export const UserTabs = ({ user }: UserTabsProps) => {
   return (
     <div>
       <div className="mb-6 border-b border-ink/10">
-        <nav className="flex gap-4">
+        <nav className="flex flex-wrap gap-2 sm:gap-4">
           <button
             onClick={() => setActiveTab('details')}
             className={cn(

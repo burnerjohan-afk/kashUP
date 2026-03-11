@@ -9,54 +9,31 @@ type DashboardTabsProps = {
 };
 
 export const DashboardTabs = ({ selectedTerritory, onTerritoryChange, children }: DashboardTabsProps) => {
+  const territories: Array<{ id: Territory | 'all'; label: string }> = [
+    { id: 'all', label: 'Tous départements' },
+    { id: 'martinique', label: 'Martinique' },
+    { id: 'guadeloupe', label: 'Guadeloupe' },
+    { id: 'guyane', label: 'Guyane' },
+  ];
+
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-6 border-b border-ink/10">
-        <nav className="flex gap-4">
-          <button
-            onClick={() => onTerritoryChange('all')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              selectedTerritory === 'all'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Tous départements
-          </button>
-          <button
-            onClick={() => onTerritoryChange('martinique')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              selectedTerritory === 'martinique'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Martinique
-          </button>
-          <button
-            onClick={() => onTerritoryChange('guadeloupe')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              selectedTerritory === 'guadeloupe'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Guadeloupe
-          </button>
-          <button
-            onClick={() => onTerritoryChange('guyane')}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              selectedTerritory === 'guyane'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-ink/50 hover:text-ink',
-            )}
-          >
-            Guyane
-          </button>
+        <nav className="flex flex-wrap gap-2 sm:gap-4">
+          {territories.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => onTerritoryChange(id)}
+              className={cn(
+                'whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors sm:px-4',
+                selectedTerritory === id
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-ink/50 hover:text-ink',
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
       </div>
       <div className="space-y-6">{children}</div>
