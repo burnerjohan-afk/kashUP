@@ -16,8 +16,9 @@ export const LoginPage = () => {
 
   if (!hasHydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-muted">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" role="status" aria-label="Chargement" />
+        <p className="text-sm text-ink/70">Chargement…</p>
       </div>
     );
   }

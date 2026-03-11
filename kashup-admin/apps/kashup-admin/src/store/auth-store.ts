@@ -84,13 +84,18 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state, err) => {
-        if (!err) {
-          useAuthStore.setState({ hasHydrated: true });
-        } else {
-          useAuthStore.setState({ hasHydrated: true });
-        }
+        useAuthStore.setState({ hasHydrated: true });
       },
+      // Au cas où onRehydrateStorage ne serait jamais appelé (localStorage bloqué, iframe, etc.)
+      skipHydration: false,
     },
   ),
 );
+
+// Fallback : forcer hasHydrated après 1s pour ne jamais bloquer l'affichage (localStorage bloqué, etc.)
+if (typeof window !== 'undefined') {
+  window.setTimeout(() => {
+    useAuthStore.setState({ hasHydrated: true });
+  }, 1000);
+}
 

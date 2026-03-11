@@ -133,15 +133,19 @@ const prepareApp = async () => {
   // Configurer les gestionnaires d'erreurs globaux
   setupGlobalErrorHandlers();
 
-  // ⚠️ ARCHITECTURE: Initialiser la détection dynamique de l'IP LAN
-  // Doit être fait avant toute requête API
-  try {
-    await initializeApiBaseUrl();
-  } catch (error) {
+  // Rendre l'app immédiatement pour éviter un écran blanc (notamment en prod si l'API init bloque)
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <AppProviders>
+      <AppRouter />
+    </AppProviders>,
+  );
+
+  // Initialiser l'URL API en arrière-plan (ne pas bloquer l'affichage)
+  initializeApiBaseUrl().catch((error) => {
     if (import.meta.env.DEV) {
       console.warn('⚠️ Échec de l\'initialisation de l\'URL API, utilisation du fallback:', error);
     }
-  }
+  });
 
   const shouldEnableMsw = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MSW === 'true';
 
@@ -151,12 +155,6 @@ const prepareApp = async () => {
   } else {
     await cleanupMockServiceWorker();
   }
-
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <AppProviders>
-      <AppRouter />
-    </AppProviders>,
-  );
 };
 
 void prepareApp();
