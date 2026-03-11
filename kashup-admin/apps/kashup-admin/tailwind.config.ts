@@ -3,6 +3,8 @@ import type { Config } from 'tailwindcss';
 const config: Config = {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Garantit que les classes du menu hamburger (responsive) sont dans le bundle production
+  safelist: ['xl:hidden', 'xl:translate-x-0', 'xl:ml-72', 'xl:shadow-none'],
   theme: {
     extend: {
       colors: {

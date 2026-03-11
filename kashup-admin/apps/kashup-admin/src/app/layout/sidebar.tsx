@@ -5,7 +5,6 @@ import { NAV_SECTIONS } from '@/app/navigation';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils/cn';
 
 const NavItem = ({
@@ -51,7 +50,7 @@ export const Sidebar = ({ open, onClose }: SidebarProps) => {
         type="button"
         aria-label="Fermer le menu"
         className={cn(
-          'fixed inset-0 z-40 bg-ink/20 backdrop-blur-sm transition-opacity lg:hidden',
+          'fixed inset-0 z-40 bg-ink/20 backdrop-blur-sm transition-opacity xl:hidden',
           open ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none',
         )}
         onClick={onClose}
@@ -59,7 +58,7 @@ export const Sidebar = ({ open, onClose }: SidebarProps) => {
 
       <aside
         className={cn(
-          'fixed left-0 top-0 z-50 flex h-screen w-72 max-w-[85vw] flex-col border-r border-ink/5 bg-surface shadow-soft transition-transform duration-200 ease-out lg:translate-x-0 lg:shadow-none',
+          'fixed left-0 top-0 z-50 flex h-screen w-72 max-w-[85vw] flex-col border-r border-ink/5 bg-surface shadow-soft transition-transform duration-200 ease-out xl:translate-x-0 xl:shadow-none',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -68,14 +67,14 @@ export const Sidebar = ({ open, onClose }: SidebarProps) => {
             <div className="text-lg font-bold text-primary">KashUP Admin</div>
             <p className="truncate text-sm text-ink/60">Pilotage écosystème & compliance</p>
           </div>
-          <Button
-            variant="ghost"
-            className="shrink-0 lg:hidden"
+          <button
+            type="button"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-ink hover:bg-ink/10 xl:hidden"
             onClick={onClose}
             aria-label="Fermer le menu"
           >
             <X className="h-5 w-5" />
-          </Button>
+          </button>
         </div>
 
         <nav className="flex-1 space-y-6 overflow-y-auto p-4 lg:p-6 lg:pt-6 pr-2">

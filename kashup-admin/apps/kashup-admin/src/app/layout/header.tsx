@@ -30,14 +30,15 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
   return (
     <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-ink/5 bg-surface/80 px-4 py-3 backdrop-blur sm:px-6 lg:px-8 lg:py-4">
       <div className="flex min-w-0 items-center gap-3">
-        <Button
-          variant="ghost"
-          className="shrink-0 lg:hidden"
+        {/* Menu hamburger : visible sous 1280px (portable, tablette), zone de touch 44px */}
+        <button
+          type="button"
           onClick={onMenuClick}
           aria-label="Ouvrir le menu"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-ink/10 bg-surface text-ink hover:bg-ink/5 xl:hidden"
         >
-          <Menu className="h-5 w-5" />
-        </Button>
+          <Menu className="h-6 w-6" aria-hidden />
+        </button>
         <div className="min-w-0">
           <p className="truncate text-xs uppercase tracking-wide text-ink/40">{section}</p>
           <h1 className="truncate text-lg font-semibold text-ink sm:text-xl lg:text-2xl">{title}</h1>
