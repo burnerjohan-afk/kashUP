@@ -411,12 +411,16 @@ export const postJson = async <T, B extends object = object>(input: string, body
   }
 };
 
+/** Timeout plus long pour les uploads (vidéos, images) — 90 s */
+const UPLOAD_TIMEOUT_MS = 90_000;
+
 export const postFormData = async <T>(input: string, body: FormData) => {
   try {
     // IMPORTANT: Ne pas passer de headers Content-Type, ky le définira automatiquement avec le bon boundary
     // Le hook beforeRequest supprimera le header par défaut 'application/json'
-    const response = await apiClient.post(input, { 
+    const response = await apiClient.post(input, {
       body,
+      timeout: UPLOAD_TIMEOUT_MS,
       // Ne pas définir de headers ici, ky gérera automatiquement le Content-Type pour FormData
     });
     return response.json<ApiResponse<T>>();
@@ -500,8 +504,9 @@ export const postFormData = async <T>(input: string, body: FormData) => {
 export const patchFormData = async <T>(input: string, body: FormData) => {
   // IMPORTANT: Ne pas passer de headers Content-Type, ky le définira automatiquement avec le bon boundary
   // Le hook beforeRequest supprimera le header par défaut 'application/json'
-  const response = await apiClient.patch(input, { 
+  const response = await apiClient.patch(input, {
     body,
+    timeout: UPLOAD_TIMEOUT_MS,
     // Ne pas définir de headers ici, ky gérera automatiquement le Content-Type pour FormData
   });
   return response.json<ApiResponse<T>>();
