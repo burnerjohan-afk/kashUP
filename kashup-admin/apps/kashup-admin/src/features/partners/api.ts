@@ -1439,5 +1439,41 @@ export const deletePartnerDocument = async (partnerId: string, documentId: strin
   }
 };
 
+// ——— Alias partenaires (reconnaissance cashback Powens) ———
+export type PartnerAlias = {
+  id: string;
+  partnerId: string;
+  aliasText: string;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const fetchPartnerAliases = async (partnerId: string): Promise<PartnerAlias[]> => {
+  const response = await getStandardJson<PartnerAlias[]>(`partners/${partnerId}/aliases`);
+  if (!response.success || response.data == null) {
+    throw new Error(response.message || 'Erreur lors de la récupération des alias');
+  }
+  return response.data;
+};
+
+export const createPartnerAlias = async (
+  partnerId: string,
+  data: { aliasText: string; priority?: number }
+): Promise<PartnerAlias> => {
+  const response = await postStandardJson<PartnerAlias>(`partners/${partnerId}/aliases`, data);
+  if (!response.success || response.data == null) {
+    throw new Error(response.message || 'Erreur lors de l\'ajout de l\'alias');
+  }
+  return response.data;
+};
+
+export const deletePartnerAlias = async (partnerId: string, aliasId: string): Promise<void> => {
+  const response = await deleteStandardJson(`partners/${partnerId}/aliases/${aliasId}`);
+  if (!response.success) {
+    throw new Error(response.message || 'Erreur lors de la suppression');
+  }
+};
+
 
 

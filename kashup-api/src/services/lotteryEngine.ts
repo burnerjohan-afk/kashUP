@@ -10,6 +10,7 @@ import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 import { notificationBus } from '../events/event-bus';
 import { createNotification } from './notification.service';
+import { sendPushToUser } from './pushNotification.service';
 import logger from '../utils/logger';
 
 const now = () => new Date();
@@ -321,6 +322,10 @@ export async function enterLottery(userId: string, lotteryId: string, ticketCoun
     category: 'lotteries',
     metadata: { lotteryId, ticketCount, pointsSpent: totalCost },
   });
+  sendPushToUser(userId, {
+    title: 'Participation confirmée',
+    body: `${ticketCount} ticket(s) pour "${lottery.title}" (−${totalCost} pts)`,
+  }).catch(() => {});
 
   return await getLotteryById(lotteryId, userId);
 }
@@ -562,6 +567,10 @@ export async function notifyWinner(userId: string, lotteryId: string) {
     category: 'lotteries',
     metadata: { lotteryId },
   });
+  sendPushToUser(userId, {
+    title: '🎉 Vous avez gagné !',
+    body: `Félicitations ! Vous avez gagné la loterie "${lottery.title}".`,
+  }).catch(() => {});
 
   notificationBus.emitEvent({
     type: 'lottery_winner',

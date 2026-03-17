@@ -38,6 +38,7 @@ import {
   createCarteUpPredefinie,
   updateCarteUpPredefinie,
   deleteCarteUpPredefinie,
+  getGiftOrderPublicPageData,
 } from '../services/giftCard.service';
 import { createGiftCardPaymentIntent, verifyGiftCardPaymentIntent } from '../services/stripe.service';
 import type { CreatePaymentIntentForGiftInput, ConfirmCardPaymentForGiftInput } from '../schemas/giftCard.schema';
@@ -48,6 +49,82 @@ import { extractFiles, processUploadedFile } from '../services/upload.service';
 import { parseListParams } from '../utils/listing';
 import { toStringParam } from '../utils/queryParams';
 import { buildAbsoluteUrl } from '../utils/network';
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Page HTML publique : détail du cadeau (box/cartes), comment ça marche, partenaires (lien, adresse, horaires). */
+export const getGiftOrderViewPageHandler = asyncHandler(async (req: Request, res: Response) => {
+  const purchaseId = req.params.id;
+  if (!purchaseId) {
+    res.status(404).send('Cadeau introuvable');
+    return;
+  }
+
+  // Base URL du scope gift-cards (ex: http://localhost:4000/api/v1/gift-cards)
+  const giftCardsBaseUrl = buildAbsoluteUrl(req, req.baseUrl || '/gift-cards');
+  const data = await getGiftOrderPublicPageData(purchaseId, giftCardsBaseUrl);
+  if (!data) {
+    res
+      .status(404)
+      .set('Content-Type', 'text/html; charset=utf-8')
+      .send('<html><body><h1>Cadeau introuvable</h1></body></html>');
+    return;
+  }
+
+  const partnersHtml = data.partners
+    .map(
+      (p) => `
+    <div class="partner">
+      <h3>${escapeHtml(p.name)}</h3>
+      ${p.offerTitle ? `<p class="offer-title">${escapeHtml(p.offerTitle)}</p>` : ''}
+      ${p.offerDescription ? `<p>${escapeHtml(p.offerDescription)}</p>` : ''}
+      ${p.websiteUrl ? `<p><a href="${escapeHtml(p.websiteUrl)}" target="_blank" rel="noopener">Site internet</a></p>` : ''}
+      ${p.address ? `<p>📍 ${escapeHtml(p.address)}</p>` : ''}
+      ${p.openingHours ? `<p>🕐 ${escapeHtml(p.openingHours)}</p>` : ''}
+    </div>`
+    )
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>${escapeHtml(data.title)} – KashUP</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; color: #1a1a1a; line-height: 1.5; }
+    .card { background: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 24px; border: 1px solid #e2e8f0; }
+    .partner { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .partner h3 { margin: 0 0 8px; }
+    .offer-title { font-weight: 600; color: #334155; }
+    a { color: #2563eb; }
+    h1 { font-size: 1.5rem; margin: 0 0 12px; }
+    h2 { font-size: 1.2rem; margin: 24px 0 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${escapeHtml(data.title)}</h1>
+    <p>${escapeHtml(data.description)}</p>
+    <p><strong>Valeur : ${data.amount} €</strong></p>
+    ${data.message ? `<p><em>${escapeHtml(data.message)}</em></p>` : ''}
+    ${data.senderLabel ? `<p>Offert par ${escapeHtml(data.senderLabel)}</p>` : ''}
+    ${data.videoLink ? `<p><a href="${escapeHtml(data.videoLink)}">Voir la vidéo du cadeau</a></p>` : ''}
+  </div>
+  ${data.howItWorks ? `<section><h2>Comment ça marche</h2><p>${escapeHtml(data.howItWorks)}</p></section>` : ''}
+  ${data.partners.length ? `<section><h2>Partenaires</h2>${partnersHtml}</section>` : ''}
+</body>
+</html>`;
+
+  res.set('Content-Type', 'text/html; charset=utf-8').send(html);
+});
 
 export const getGiftCardCatalog = asyncHandler(async (_req: Request, res: Response) => {
   const params = parseListParams(_req.query);

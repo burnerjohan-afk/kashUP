@@ -3,11 +3,14 @@ import path from 'path';
 import {
   createCategory,
   createPartner,
+  createPartnerAlias,
   createPartnerDocument,
   deleteCategory,
   deletePartner,
+  deletePartnerAlias,
   deletePartnerDocument,
   getPartner,
+  getPartnerAliases,
   getPartnerDocuments,
   getPartnerStatistics,
   listCategories,
@@ -17,7 +20,7 @@ import {
   updatePartner
 } from '../services/partner.service';
 import { asyncHandler } from '../utils/asyncHandler';
-import { PartnerFilterInput, createPartnerSchema, partnerFiltersSchema, updatePartnerSchema } from '../schemas/partner.schema';
+import { PartnerFilterInput, createPartnerAliasSchema, createPartnerSchema, partnerFiltersSchema, updatePartnerSchema } from '../schemas/partner.schema';
 import { sendSuccess } from '../utils/response';
 import { getFileUrl } from '../config/upload';
 import { buildAbsoluteUrl } from '../utils/network';
@@ -1551,6 +1554,28 @@ export const uploadPartnerDocumentHandler = asyncHandler(async (req: Request, re
 export const deletePartnerDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
   const { id: partnerId, documentId } = req.params;
   await deletePartnerDocument(partnerId, documentId);
+  sendSuccess(res, null, null, 204);
+});
+
+// ——— Alias partenaires (reconnaissance cashback Powens) ———
+export const getPartnerAliasesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const aliases = await getPartnerAliases(req.params.id);
+  sendSuccess(res, aliases, null, 200, 'Alias du partenaire récupérés avec succès');
+});
+
+export const createPartnerAliasHandler = asyncHandler(async (req: Request, res: Response) => {
+  const partnerId = req.params.id;
+  const parsed = createPartnerAliasSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError('Données invalides', 422, { code: 'VALIDATION_ERROR', details: parsed.error.flatten() });
+  }
+  const alias = await createPartnerAlias(partnerId, parsed.data);
+  sendSuccess(res, alias, null, 201, 'Alias ajouté avec succès');
+});
+
+export const deletePartnerAliasHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id: partnerId, aliasId } = req.params;
+  await deletePartnerAlias(partnerId, aliasId);
   sendSuccess(res, null, null, 204);
 });
 

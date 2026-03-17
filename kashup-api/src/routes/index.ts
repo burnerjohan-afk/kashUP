@@ -13,6 +13,7 @@ import homeBannerRoutes from './homeBanner.routes';
 import notificationRoutes from './notification.routes';
 import powensRoutes from './powens.routes';
 import powensIntegrationRoutes from './powensIntegration.routes';
+import { powensCallback } from '../controllers/powensIntegration.controller';
 import drimifyRoutes from './drimify.routes';
 import webhookRoutes from './webhook.routes';
 import adminRoutes from './admin.routes';
@@ -46,6 +47,9 @@ router.use('/lotteries', lotteriesRoutes);
 router.use('/boxups', boxupsRoutes);
 router.use('/carteups', carteupsRoutes);
 router.use('/', blobRoutes); // GET /blob?url=... (proxy images Blob privé)
+
+// Callback Powens (redirect_uri = https://kashupv0.vercel.app/powens/callback) — sans préfixe /api/v1
+router.get('/powens/callback', powensCallback);
 
 // Routes autres ressources
 router.use('/offers', offersRoutes);

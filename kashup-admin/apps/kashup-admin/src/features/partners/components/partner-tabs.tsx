@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils/cn';
 import { PartnerForm } from './partner-form';
 import { PartnerStatistics } from './partner-statistics';
+import { PartnerAliases } from './partner-aliases';
 import type { Partner } from '@/types/entities';
 import type { PartnerFormInput } from '../api';
 
@@ -12,7 +13,7 @@ type PartnerTabsProps = {
 };
 
 export const PartnerTabs = ({ partner, onUpdate, isUpdating }: PartnerTabsProps) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'statistics'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'statistics' | 'aliases'>('details');
 
   return (
     <div>
@@ -30,6 +31,17 @@ export const PartnerTabs = ({ partner, onUpdate, isUpdating }: PartnerTabsProps)
             Détails
           </button>
           <button
+            onClick={() => setActiveTab('aliases')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium transition-colors',
+              activeTab === 'aliases'
+                ? 'border-b-2 border-primary text-primary'
+                : 'text-ink/50 hover:text-ink',
+            )}
+          >
+            Alias cashback
+          </button>
+          <button
             onClick={() => setActiveTab('statistics')}
             className={cn(
               'px-4 py-2 text-sm font-medium transition-colors',
@@ -45,6 +57,10 @@ export const PartnerTabs = ({ partner, onUpdate, isUpdating }: PartnerTabsProps)
 
       {activeTab === 'details' && (
         <PartnerForm partner={partner} onSubmit={onUpdate} isLoading={isUpdating} />
+      )}
+
+      {activeTab === 'aliases' && (
+        <PartnerAliases partnerId={partner.id} partnerName={partner.name} />
       )}
 
       {activeTab === 'statistics' && <PartnerStatistics partnerId={partner.id} />}

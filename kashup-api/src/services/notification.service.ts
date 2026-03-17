@@ -5,6 +5,7 @@ import { checkChallengeProgress } from './challengeEngine';
 import { addCashbackContribution } from './communityJackpotEngine';
 import { addLotteryContribution } from './communityJackpotEngine';
 import { addChallengeContribution } from './communityJackpotEngine';
+import { sendPushToUser } from './pushNotification.service';
 
 export const listNotificationsForUser = (userId: string) => {
   return prisma.notification.findMany({
@@ -89,6 +90,7 @@ const handlers: Record<NotificationEvent['type'], (payload: any) => Promise<void
       category: 'boosts',
       metadata: payload
     });
+    sendPushToUser(payload.userId, { title: `Boost activé : ${name}`, body }).catch(() => {});
   },
   drimify_experience_result: async (payload) => {
     await createNotification(payload.userId, {
@@ -97,6 +99,7 @@ const handlers: Record<NotificationEvent['type'], (payload: any) => Promise<void
       category: 'system',
       metadata: payload
     });
+    sendPushToUser(payload.userId, { title: 'Résultat jeu', body: payload.message }).catch(() => {});
   },
   powens_connection_sync: async (payload) => {
     await createNotification(payload.userId, {

@@ -4,10 +4,8 @@ import type { TransactionsFilters } from '@/features/transactions/api';
 import type { UsersFilters } from '@/features/users/api';
 import type { ContentItem, Offer, Partner, PowensWebhook, Reward, Territory } from '@/types/entities';
 import type { GiftCardOrder, GiftCardPurchaseInput } from '@/features/gift-cards/api';
-import type { DonationFormInput, ContentFormInput } from '@/features/donations/api';
 import type { NotificationFormInput } from '@/features/notifications/api';
 import type { ManualTransactionInput } from '@/features/transactions/api';
-import type { PartnerFormInput } from '@/features/partners/api';
 import type { OfferFormInput } from '@/features/offers/api';
 import type { RewardFormInput } from '@/features/rewards/api';
 import type { RoleFormInput } from '@/features/settings/api';
@@ -20,7 +18,7 @@ import type {
   GiftSendLog,
   GiftSendInput,
 } from '@/types/gifts';
-import type { Association, Projet, PartnerDocument } from '@/types/entities';
+import type { Association, Donation, Projet, PartnerDocument } from '@/types/entities';
 import type { AssociationFormInput, ProjetFormInput } from '@/features/donations/api';
 
 // Utiliser l'URL de l'API depuis l'environnement ou localhost par défaut
@@ -226,7 +224,15 @@ export const handlers = [
       const territories = territory && territory !== 'all' ? [territory] : ['martinique', 'guadeloupe', 'guyane'];
       const sectors = sector && sector !== 'all' ? [sector] : ['Restauration', 'Retail', 'Culture', 'Mobilité'];
       
-      const expandedData = [];
+      type StatsRow = {
+        period: string;
+        transactions: number;
+        transactionGrowth: number;
+        averageBasket: number;
+        averageBasketGrowth: number;
+        totalAmount: number;
+      };
+      const expandedData: StatsRow[] = [];
       territories.forEach((t) => {
         sectors.forEach((s) => {
           const txGrowth = (Math.random() * 30 - 10);
@@ -314,8 +320,7 @@ export const handlers = [
     return ok(departments, 'Statistiques par département récupérées avec succès');
   }),
   http.get(`${API_URL}/admin/statistics/detail`, async ({ request }) => {
-    const url = new URL(request.url);
-    const period = url.searchParams.get('period') || 'Période actuelle';
+    new URL(request.url); // query params disponibles si besoin
 
     // Générer des données mockées avec évolutions M-1 et N-1
     const currentTransactions = 150;
@@ -608,12 +613,13 @@ export const handlers = [
     
     // Filtrer par territoire
     if (territory && territory !== 'all') {
+      const territoryFilter = territory as Territory;
       result = result.filter((partner) => {
         // Support des nouveaux territoires (array) et ancien (string)
         if (partner.territories && Array.isArray(partner.territories)) {
-          return partner.territories.includes(territory);
+          return partner.territories.includes(territoryFilter);
         }
-        return partner.territory === territory;
+        return partner.territory === territoryFilter;
       });
     }
     
@@ -669,16 +675,16 @@ export const handlers = [
           aValue = a.name.toLowerCase();
           bValue = b.name.toLowerCase();
       }
-      
+
       if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortOrder === 'asc' 
+        return sortOrder === 'asc'
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       }
-      
-      return sortOrder === 'asc' 
-        ? (aValue as number) - (bValue as number)
-        : (bValue as number) - (aValue as number);
+
+      const aNum = typeof aValue === 'number' ? aValue : Number(aValue);
+      const bNum = typeof bValue === 'number' ? bValue : Number(bValue);
+      return sortOrder === 'asc' ? (aNum - bNum) : (bNum - aNum);
     });
     
     // Pagination
@@ -892,9 +898,6 @@ export const handlers = [
       marketingPrograms: formData.get('marketingPrograms')
         ? JSON.parse(String(formData.get('marketingPrograms')))
         : [],
-      featuredOffers: formData.get('featuredOffers')
-        ? JSON.parse(String(formData.get('featuredOffers')))
-        : [],
       // Informations complémentaires
       phone: formData.get('phone') ? String(formData.get('phone')) : undefined,
       instagramUrl: formData.get('instagramUrl') ? String(formData.get('instagramUrl')) : undefined,
@@ -1069,9 +1072,6 @@ export const handlers = [
       partner.pointsPerTransaction = Number(formData.get('pointsPerTransaction'));
     if (formData.get('marketingPrograms'))
       partner.marketingPrograms = JSON.parse(String(formData.get('marketingPrograms')));
-    if (formData.get('featuredOffers'))
-      partner.featuredOffers = JSON.parse(String(formData.get('featuredOffers')));
-    
     // Informations complémentaires
     if (formData.get('phone') !== undefined) partner.phone = formData.get('phone') ? String(formData.get('phone')) : undefined;
     if (formData.get('instagramUrl') !== undefined) partner.instagramUrl = formData.get('instagramUrl') ? String(formData.get('instagramUrl')) : undefined;
@@ -1079,9 +1079,12 @@ export const handlers = [
     
     // Horaires d'ouverture
     if (formData.get('openingHoursStart') !== undefined || formData.get('openingHoursEnd') !== undefined) {
+      const current = typeof partner.openingHours === 'object' && partner.openingHours && 'start' in partner.openingHours
+        ? (partner.openingHours as { start: string; end: string })
+        : { start: '', end: '' };
       partner.openingHours = {
-        start: formData.get('openingHoursStart') ? String(formData.get('openingHoursStart')) : partner.openingHours?.start || '',
-        end: formData.get('openingHoursEnd') ? String(formData.get('openingHoursEnd')) : partner.openingHours?.end || '',
+        start: formData.get('openingHoursStart') ? String(formData.get('openingHoursStart')) : current.start,
+        end: formData.get('openingHoursEnd') ? String(formData.get('openingHoursEnd')) : current.end,
       };
     }
     
@@ -1260,6 +1263,42 @@ export const handlers = [
     db.partnerDocuments.splice(index, 1);
     return ok(null, 'Document supprimé avec succès');
   }),
+  http.get(`${API_URL}/partners/:partnerId/aliases`, async ({ params }) => {
+    const { partnerId } = params as { partnerId: string };
+    const partner = db.partners.find((item) => item.id === partnerId);
+    if (!partner) return failure('Partenaire introuvable', 404);
+    const aliases = (db.partnerAliases || []).filter((a: { partnerId: string }) => a.partnerId === partnerId);
+    return ok(aliases, 'Alias du partenaire récupérés avec succès');
+  }),
+  http.post(`${API_URL}/partners/:partnerId/aliases`, async ({ params, request }) => {
+    const { partnerId } = params as { partnerId: string };
+    const partner = db.partners.find((item) => item.id === partnerId);
+    if (!partner) return failure('Partenaire introuvable', 404);
+    const body = await request.json() as { aliasText?: string; priority?: number };
+    const aliasText = (body?.aliasText ?? '').toString().trim();
+    if (!aliasText) return failure('L\'alias ne peut pas être vide', 400);
+    const alias = {
+      id: makeId(),
+      partnerId,
+      aliasText,
+      priority: typeof body?.priority === 'number' ? body.priority : 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    if (!db.partnerAliases) db.partnerAliases = [];
+    db.partnerAliases.push(alias);
+    return ok(alias, 'Alias ajouté avec succès');
+  }),
+  http.delete(`${API_URL}/partners/:partnerId/aliases/:aliasId`, async ({ params }) => {
+    const { partnerId, aliasId } = params as { partnerId: string; aliasId: string };
+    const partner = db.partners.find((item) => item.id === partnerId);
+    if (!partner) return failure('Partenaire introuvable', 404);
+    if (!db.partnerAliases) return failure('Alias introuvable', 404);
+    const index = db.partnerAliases.findIndex((a: { id: string; partnerId: string }) => a.id === aliasId && a.partnerId === partnerId);
+    if (index === -1) return failure('Alias introuvable', 404);
+    db.partnerAliases.splice(index, 1);
+    return HttpResponse.json({ statusCode: 204, success: true, message: 'Alias supprimé', data: null }, { status: 204 });
+  }),
   http.get(`${API_URL}/offers/current`, async () => ok(db.offers, 'Offres actuelles récupérées avec succès')),
   http.post(`${API_URL}/offers`, async ({ request }) => {
     const contentType = request.headers.get('content-type');
@@ -1269,8 +1308,9 @@ export const handlers = [
     if (contentType?.includes('multipart/form-data')) {
       const formData = await request.formData();
       const partnerId = formData.get('partnerId') as string;
-      const partner = db.partners.find((p) => p.id === partnerId);
-      
+      const partnerExists = db.partners.some((p) => p.id === partnerId);
+      if (!partnerExists) return failure('Partenaire introuvable', 404);
+
       payload = {
         partnerId,
         title: formData.get('title') as string,
@@ -1995,8 +2035,8 @@ export const handlers = [
   http.get(`${API_URL}/gifts/logs`, async () => ok(db.giftSendLogs, 'Logs d\'envoi de cadeaux récupérés avec succès')),
   http.get(`${API_URL}/donations`, async () => ok(db.donations, 'Dons récupérés avec succès')),
   http.post(`${API_URL}/donations`, async ({ request }) => {
-    const payload = (await request.json()) as DonationFormInput;
-    const donation = { id: makeId(), ...payload };
+    const payload = (await request.json()) as Record<string, unknown>;
+    const donation = { id: makeId(), ...payload } as Donation;
     db.donations.unshift(donation);
     return ok(donation, 'Don créé avec succès');
   }),
@@ -2236,12 +2276,12 @@ export const handlers = [
   }),
   http.get(`${API_URL}/content`, async () => ok(db.contentItems, 'Contenus récupérés avec succès')),
   http.post(`${API_URL}/content`, async ({ request }) => {
-    const payload = (await request.json()) as ContentFormInput;
-    const item: ContentItem = {
+    const payload = (await request.json()) as Record<string, unknown>;
+    const item = {
       id: makeId(),
       ...payload,
       updatedAt: new Date().toISOString(),
-    };
+    } as ContentItem;
     db.contentItems.unshift(item);
     return ok(item, 'Contenu créé avec succès');
   }),
@@ -2312,13 +2352,10 @@ export const handlers = [
     return ok(filterTransactions(filters), 'Transactions récupérées avec succès');
   }),
   http.post(`${API_URL}/transactions`, async ({ request }) => {
-    const payload = await request.json() as Partial<ManualTransactionInput & { userId?: string; amount?: number; partnerId?: string; source?: string; type?: string }>;
-    const isWalletAdjustment = payload.type === 'credit' || payload.type === 'debit';
-    const direction = isWalletAdjustment && payload.type === 'debit' ? -1 : 1;
+    const payload = await request.json() as Partial<ManualTransactionInput & { userId?: string; amount?: number; partnerId?: string }>;
     const userId = payload.userId ?? db.users[0].id;
     const amount = Number(payload.amount ?? 0);
-    const transactionType: ManualTransactionInput['type'] =
-      !isWalletAdjustment && payload.type ? payload.type as ManualTransactionInput['type'] : payload.source === 'points' ? 'points' : 'cashback';
+    const transactionType: ManualTransactionInput['type'] = payload.type ?? 'cashback';
 
     const transaction = {
       id: makeId(),
@@ -2331,11 +2368,11 @@ export const handlers = [
     };
     db.transactions.unshift(transaction);
     const user = db.users.find((candidate) => candidate.id === userId);
-    if (user && isWalletAdjustment) {
-      if (payload.source === 'cashback') {
-        user.wallet.balanceCashback = Math.max(0, user.wallet.balanceCashback + direction * amount);
-      } else if (payload.source === 'points') {
-        user.wallet.balancePoints = Math.max(0, user.wallet.balancePoints + direction * amount);
+    if (user) {
+      if (transactionType === 'cashback') {
+        user.wallet.balanceCashback = Math.max(0, user.wallet.balanceCashback + amount);
+      } else if (transactionType === 'points') {
+        user.wallet.balancePoints = Math.max(0, user.wallet.balancePoints + amount);
       }
       user.wallet.updatedAt = new Date().toISOString();
     }

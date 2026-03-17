@@ -12,7 +12,9 @@ import {
   getWalletMonthlyInjected,
   getWalletMonthlyObjective,
   deleteMyAccount,
-  exportMyData
+  exportMyData,
+  updatePushToken,
+  clearPushToken,
 } from '../services/user.service';
 import {
   getCoffreFortConfig,
@@ -227,6 +229,32 @@ export const deleteMyAccountHandler = asyncHandler(async (req: Request, res: Res
   const userId = ensureAuth(req);
   await deleteMyAccount(userId);
   sendSuccess(res, { message: 'Compte supprimé avec succès' }, null, 200, 'Compte supprimé');
+});
+
+/**
+ * POST /me/push-token
+ * Enregistre le token Expo Push pour les notifications (app mobile).
+ * Body: { token: string, platform?: 'expo' }
+ */
+export const postPushTokenHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = ensureAuth(req);
+  const token = req.body?.token;
+  if (!token || typeof token !== 'string') {
+    throw new AppError('Le champ token est requis', 400);
+  }
+  await updatePushToken(userId, token);
+  sendSuccess(res, { message: 'Token push enregistré' }, null, 200, 'Token enregistré');
+});
+
+/**
+ * DELETE /me/push-token
+ * Supprime le token Expo Push (déconnexion ou désactivation des notifications).
+ * Body: { token?: string } (optionnel, pour cibler un appareil)
+ */
+export const deletePushTokenHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = ensureAuth(req);
+  await clearPushToken(userId);
+  sendSuccess(res, { message: 'Token push supprimé' }, null, 200, 'Token supprimé');
 });
 
 

@@ -7,6 +7,7 @@
 import prisma from '../config/prisma';
 import { notificationBus } from '../events/event-bus';
 import { createNotification } from './notification.service';
+import { sendPushToUser } from './pushNotification.service';
 
 const CHALLENGE_TYPES = [
   'challenge_purchase',
@@ -236,6 +237,10 @@ export async function checkChallengeProgress(
           category: 'challenges',
           metadata: { challengeId: challenge.id },
         });
+        sendPushToUser(userId, {
+          title: 'Challenge commencé',
+          body: `Tu as démarré « ${challenge.title} ». Bonne chance !`,
+        }).catch(() => {});
       }
 
       await updateChallengeProgress(challenge.id, userId, newProgress);
@@ -249,6 +254,10 @@ export async function checkChallengeProgress(
           category: 'challenges',
           metadata: { challengeId: challenge.id, rewardId: reward?.id },
         });
+        sendPushToUser(userId, {
+          title: 'Challenge complété',
+          body: `${challenge.title} – Récompense débloquée !`,
+        }).catch(() => {});
         notificationBus.emitEvent({
           type: 'challenge_completed',
           payload: { userId, challengeId: challenge.id },
@@ -260,6 +269,10 @@ export async function checkChallengeProgress(
           category: 'challenges',
           metadata: { challengeId: challenge.id },
         });
+        sendPushToUser(userId, {
+          title: 'Plus que 20 %',
+          body: `Tu as atteint ${percentage}% sur « ${challenge.title} ». Continue !`,
+        }).catch(() => {});
       }
     }
   }

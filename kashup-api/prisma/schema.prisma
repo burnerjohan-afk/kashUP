@@ -21,6 +21,7 @@ model User {
   gender            String?                // M | F | other — collecté à l'inscription
   ageRange          String?                // ex. 18-25, 26-35, 36-50, 50+ — collecté à l'inscription
   partnerId         String?                @unique  // Si role=partner, lien vers le partenaire
+  pushToken         String?                // Token Expo Push pour notifications (app mobile)
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
   partner           Partner?               @relation(fields: [partnerId], references: [id])
@@ -57,6 +58,7 @@ model User {
   jackpotEntries        JackpotEntry[]
   jackpotContributions  JackpotContribution[]
   jackpotWins           JackpotWinner[]
+  cashbackTransactions  CashbackTransaction[]
 }
 
 model PartnerCategory {
@@ -116,6 +118,8 @@ model Partner {
   documents         PartnerDocument[]
   offers            PartnerOffer[]
   transactions      Transaction[]
+  aliases           PartnerAlias[]
+  cashbackTransactions CashbackTransaction[]
   users             User[]                 // Comptes espace partenaire (role=partner)
   challenges        Challenge[]
   lotteries         Lottery[]
@@ -354,6 +358,20 @@ model GiftCardPurchase {
   createdAt        DateTime @default(now())
   giftCard         GiftCard @relation(fields: [giftCardId], references: [id])
   purchaser        User     @relation("GiftCardPurchaser", fields: [purchaserId], references: [id])
+
+  /// Vidéo personnalisée associée au cadeau (optionnelle)
+  /// videoUrl: URL Blob ou chemin relatif vers le proxy
+  /// videoDurationSeconds: durée réelle de la vidéo en secondes
+  /// videoStatus: none | uploading | ready | failed | deleted
+  videoUrl             String?
+  videoDurationSeconds Int?
+  videoStatus          String?   @default("none")
+  videoSentAt          DateTime?
+  videoOpenedAt        DateTime?
+  videoViewedAt        DateTime?
+  videoViewCount       Int       @default(0)
+  videoRetentionUntil  DateTime?
+  videoDeletedAt       DateTime?
 }
 
 model GiftBox {
@@ -911,6 +929,16 @@ model BankTransaction {
   label               String
   category            String?
   raw                 String?
+  /** Champs de reconnaissance cashback (Powens) */
+  normalizedLabel     String?
+  isWalletPayment     Boolean     @default(false)
+  extractedMerchant   String?
+  merchantNormalized  String?
+  cashbackProcessed   Boolean     @default(false)
+  cashbackProcessedAt DateTime?
+  cashbackStatus      String?     // pending | confirmed | rejected | wallet_unknown | no_match | ignored_refund | ignored_credit
+  cashbackReason      String?
+  cashbackTransaction CashbackTransaction?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
   account             BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -918,6 +946,45 @@ model BankTransaction {
   @@unique([accountId, powensTransactionId])
   @@index([accountId])
   @@index([date])
+  @@index([cashbackProcessed])
+  @@index([merchantNormalized])
+}
+
+model PartnerAlias {
+  id        String   @id @default(cuid())
+  partnerId String
+  aliasText String
+  priority  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([aliasText])
+  @@unique([partnerId, aliasText])
+}
+
+model CashbackTransaction {
+  id                   String   @id @default(cuid())
+  userId               String
+  partnerId            String
+  bankTransactionId    String   @unique
+  powensTransactionId  String?
+  transactionAmount    Float
+  cashbackRate         Float
+  cashbackAmount       Float
+  paymentMethod        String?  // card | apple_pay | google_pay | wallet_unknown
+  status               String   @default("pending") // pending | confirmed | rejected
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id])
+  partner              Partner  @relation(fields: [partnerId], references: [id])
+  bankTransaction      BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([partnerId])
+  @@index([powensTransactionId])
+  @@index([status])
 }
 
 model AdminReportLog {

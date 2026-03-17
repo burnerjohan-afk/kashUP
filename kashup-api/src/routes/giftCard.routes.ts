@@ -36,12 +36,14 @@ import {
   createCarteUpPredefinieHandler,
   updateCarteUpPredefinieHandler,
   deleteCarteUpPredefinieHandler,
+  getGiftOrderViewPageHandler,
 } from '../controllers/giftcard.controller';
 import { authMiddleware, requireRoles } from '../middlewares/auth';
 import { validateBody } from '../middlewares/validator';
 import { purchaseGiftCardSchema, sendPredefinedGiftSchema, sendBoxUpSchema, sendSelectionUpSchema, createPaymentIntentForGiftSchema, confirmCardPaymentForGiftSchema, giftCardConfigSchema, boxUpConfigSchema, giftCardAmountSchema } from '../schemas/giftCard.schema';
 import { USER_ROLE } from '../types/domain';
 import { uploadFields, uploadSingle } from '../config/upload';
+import { attachGiftVideoHandler, markGiftVideoViewedHandler, streamGiftVideoHandler } from '../controllers/giftcardVideo.controller';
 
 const router = Router();
 
@@ -52,6 +54,9 @@ router.get('/offers', getGiftCardOffers);
 router.get('/boxes', getGiftCardBoxes);
 router.get('/boxes/:id', getGiftCardBoxDetail);
 router.get('/cartes-up-libres/for-app', getCartesUpLibresForAppHandler);
+
+// Page publique détail d'un cadeau (box / cartes, comment ça marche, partenaires)
+router.get('/orders/:id/view', getGiftOrderViewPageHandler);
 
 // Routes authentifiées (utilisateurs)
 router.get('/user', authMiddleware, getGiftCardsForUser);
@@ -155,6 +160,16 @@ router.patch(
   updateCarteUpPredefinieHandler
 );
 router.delete('/cartes-up-predefinies/:id', authMiddleware, requireRoles(USER_ROLE.admin), deleteCarteUpPredefinieHandler);
+
+// Vidéo personnalisée associée à un achat de carte / BoxUp
+router.post(
+  '/orders/:id/video',
+  authMiddleware,
+  uploadSingle('video'),
+  attachGiftVideoHandler,
+);
+router.get('/orders/:id/video', streamGiftVideoHandler);
+router.post('/orders/:id/video/viewed', markGiftVideoViewedHandler);
 
 export default router;
 

@@ -81,6 +81,8 @@ export type Partner = {
   facebookUrl?: string;
   menuImages?: string[]; // URLs des images du menu (uniquement pour restaurants)
   photos?: string[]; // URLs des photos (pour tous les secteurs, y compris restaurants)
+  /** Offres à la une (mocks / back office) */
+  featuredOffers?: Array<{ id: string; price?: number; cashbackRate?: number; imageUrl?: string }>;
 };
 
 export type PartnerDocument = {

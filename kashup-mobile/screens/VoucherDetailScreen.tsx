@@ -1,13 +1,6 @@
-import React from 'react';
-import {
-  Alert,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useRef } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +8,8 @@ import { RouteProp, useNavigation } from '@react-navigation/native';
 
 import { colors, radius, spacing } from '../constants/theme';
 import { VoucherPayload } from '../types/vouchers';
+import { getApiBaseUrl } from '@/src/config/api';
+import { markGiftVideoViewed } from '@/src/services/giftCardService';
 
 type VoucherDetailRoute = RouteProp<{ VoucherDetail: { voucher: VoucherPayload } }, 'VoucherDetail'>;
 
@@ -26,12 +21,27 @@ export default function VoucherDetailScreen({ route }: Props) {
   const navigation = useNavigation();
   const { voucher } = route.params;
   const hasLocation = !!(voucher.locationText || voucher.mapUrl);
+  const apiBaseUrl = getApiBaseUrl();
+  const hasVideo = voucher.purchaseId && voucher.videoStatus === 'ready';
+  const hasMarkedViewedRef = useRef(false);
 
   const openMap = () => {
     if (voucher.mapUrl) {
       Linking.openURL(voucher.mapUrl).catch(() =>
         Alert.alert('Erreur', "Impossible d'ouvrir la carte."),
       );
+    }
+  };
+
+  const handleVideoStatusUpdate = async (status: any) => {
+    if (!hasVideo || !voucher.purchaseId) return;
+    if (status.isLoaded && status.didJustFinish && !hasMarkedViewedRef.current) {
+      hasMarkedViewedRef.current = true;
+      try {
+        await markGiftVideoViewed(voucher.purchaseId);
+      } catch {
+        // best effort
+      }
     }
   };
 
@@ -67,6 +77,25 @@ export default function VoucherDetailScreen({ route }: Props) {
             <Text style={styles.heroExpiration}>Valable jusqu’au {voucher.expiration}</Text>
           )}
         </LinearGradient>
+
+        {hasVideo && voucher.purchaseId && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Message vidéo</Text>
+            <View style={styles.videoContainer}>
+              <Video
+                source={{ uri: `${apiBaseUrl}/gift-cards/orders/${voucher.purchaseId}/video` }}
+                style={styles.video}
+                useNativeControls
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={false}
+                onPlaybackStatusUpdate={handleVideoStatusUpdate}
+              />
+            </View>
+            {!!voucher.videoDurationSeconds && (
+              <Text style={styles.videoMeta}>Durée ~ {voucher.videoDurationSeconds}s</Text>
+            )}
+          </View>
+        )}
 
         {hasLocation && (
           <View style={styles.card}>
@@ -244,6 +273,22 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: colors.primaryBlue,
     fontWeight: '700',
+  },
+  videoContainer: {
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.backgroundSecondary,
+    aspectRatio: 16 / 9,
+  },
+  video: {
+    width: '100%',
+    height: '100%',
+  },
+  videoMeta: {
+    marginTop: spacing.xs,
+    fontSize: 12,
+    color: colors.textSecondary,
   },
 });
 

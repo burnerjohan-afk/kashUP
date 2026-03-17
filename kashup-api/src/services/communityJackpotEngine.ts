@@ -10,6 +10,7 @@ import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 import { notificationBus } from '../events/event-bus';
 import { createNotification } from './notification.service';
+import { sendPushToUser } from './pushNotification.service';
 import logger from '../utils/logger';
 
 const now = () => new Date();
@@ -597,6 +598,10 @@ export async function drawJackpotWinner(): Promise<{ winnerUserId: string; winni
       category: 'jackpot_winner',
       metadata: { jackpotId: jackpot.id, winningAmount },
     });
+    sendPushToUser(winnerEntry.userId, {
+      title: 'Jackpot KashUP – Vous avez gagné !',
+      body: `Félicitations ! Vous avez remporté le jackpot de ${winningAmount.toFixed(2)} €. Le montant a été crédité sur votre cagnotte.`,
+    }).catch(() => {});
   } catch (e) {
     logger.warn({ err: e }, 'Failed to create jackpot winner notification');
   }

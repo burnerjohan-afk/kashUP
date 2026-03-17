@@ -32,6 +32,7 @@ import { useWallet } from '@/src/hooks/useWallet';
 import { useWebhookEvents } from '@/src/hooks/useWebhookEvents';
 import {
   getGiftBoxes,
+  sendBoxUp,
   getGiftCardOffers,
   getCartesUpLibresForApp,
   sendPredefinedGift,
@@ -42,6 +43,7 @@ import {
   GiftCardOffer,
   GiftCardPurchase,
   type CarteUpLibre,
+  uploadGiftVideo,
 } from '@/src/services/giftCardService';
 import { usePaymentSheet } from '../src/stubs/stripePaymentSheet';
 import { getPartners } from '@/src/services/partnerService';
@@ -57,6 +59,9 @@ import { useKYCGuard } from '../src/guards/kycGuard';
 import { normalizeImageUrl } from '../src/utils/normalizeUrl';
 import { ApiError } from '../src/types/api';
 import { VoucherPayload } from '../types/vouchers';
+import { useGiftVideo } from '@/src/hooks/useGiftVideo';
+import { getApiBaseUrl } from '@/src/config/api';
+import { GiftVideoPreview } from '@/src/components/GiftVideoPreview';
 
 /** Extrait le message d'erreur API (401 → message session, sinon message backend ou générique). */
 function getApiErrorMessage(error: unknown, fallback: string): string {
@@ -221,6 +226,27 @@ const getAccentColor = (seed: string) => {
 const fallbackHeroImage =
   'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1000&q=60';
 
+const computeCashbackEarned = (amount: number, cashbackRate?: number | string | null) => {
+  const rate = cashbackRate != null && cashbackRate !== '' ? Number(cashbackRate) : 0;
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  const earned = (amount * rate) / 100;
+  return Math.round(earned * 100) / 100;
+};
+
+const confirmWalletDebit = (params: { amount: number; cashbackRate?: number | string | null; title?: string }) =>
+  new Promise<boolean>((resolve) => {
+    const cashbackEarned = computeCashbackEarned(params.amount, params.cashbackRate);
+    const net = Math.round((params.amount - cashbackEarned) * 100) / 100;
+    Alert.alert(
+      params.title ?? 'Confirmer le débit',
+      `Vous allez payer ${formatCurrency(params.amount)} depuis votre cagnotte cashback.\n\nCashback gagné : ${formatCurrency(cashbackEarned)}\nImpact net sur votre solde : -${formatCurrency(net)}\n\nConfirmer ?`,
+      [
+        { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Confirmer', style: 'destructive', onPress: () => resolve(true) },
+      ]
+    );
+  });
+
 /** URL d'image pour une box : uniquement l'image enregistrée au back office (heroImageUrl, imageUrl ou snake_case). Pas d'image par défaut. */
 function getBoxImageUri(box: {
   heroImageUrl?: string | null;
@@ -272,7 +298,13 @@ export default function GiftCardsScreen() {
       Alert.alert('Messagerie indisponible', 'Impossible d’ouvrir votre application e-mail.'),
     );
   };
+  /** Vue principale : landing (3 encarts) | mes_cartes | flow dédié (selection_flow, carte_up_flow, box_up_flow) */
+  const [viewMode, setViewMode] = useState<'landing' | 'mes_cartes' | 'selection_flow' | 'carte_up_flow' | 'box_up_flow'>('landing');
+  const [selectionStep, setSelectionStep] = useState(0);
+  const [carteUpStep, setCarteUpStep] = useState(0);
+  const [boxUpStep, setBoxUpStep] = useState(0);
   const [activeTab, setActiveTab] = useState<TabKey>('mes');
+  const [showCartesUpLanding, setShowCartesUpLanding] = useState(true);
   const [cartesUpSubTab, setCartesUpSubTab] = useState<CartesUpSubTab>('selection');
 
   const [partnerPickerVisible, setPartnerPickerVisible] = useState(false);
@@ -303,8 +335,8 @@ export default function GiftCardsScreen() {
   const [showMacaronPalette, setShowMacaronPalette] = useState(false);
   const [showBackgroundPalette, setShowBackgroundPalette] = useState(false);
 
-const [predefinedModalVisible, setPredefinedModalVisible] = useState(false);
-const [selectedPredefinedGift, setSelectedPredefinedGift] = useState<GiftCardOffer | null>(null);
+  const [predefinedModalVisible, setPredefinedModalVisible] = useState(false);
+  const [selectedPredefinedGift, setSelectedPredefinedGift] = useState<GiftCardOffer | null>(null);
   const [predefinedSendMode, setPredefinedSendMode] = useState<'email' | 'notification'>('email');
   const [predefinedPaymentMethod, setPredefinedPaymentMethod] = useState<'cashback' | 'card'>('cashback');
   const [selectionPaymentMethod, setSelectionPaymentMethod] = useState<'cashback' | 'card'>('cashback');
@@ -317,12 +349,32 @@ const [selectedPredefinedGift, setSelectedPredefinedGift] = useState<GiftCardOff
   const [predefinedFontId, setPredefinedFontId] = useState(FONT_OPTIONS_CARTE[0].id);
   const [predefinedTextColorId, setPredefinedTextColorId] = useState(TEXT_COLORS_CARTE[0].id);
   const [predefinedBackgroundColorId, setPredefinedBackgroundColorId] = useState(BACKGROUND_COLORS_CARTE[0].id);
-const [offerTemplates, setOfferTemplates] = useState<GiftCardOffer[]>([]);
-const [boxTemplates, setBoxTemplates] = useState<GiftBox[]>([]);
-const [selectionUpConfig, setSelectionUpConfig] = useState<CarteUpLibre[]>([]);
+  const [offerTemplates, setOfferTemplates] = useState<GiftCardOffer[]>([]);
+  const [boxTemplates, setBoxTemplates] = useState<GiftBox[]>([]);
+  const [selectedBox, setSelectedBox] = useState<GiftBox | null>(null);
+  const [boxOfferRecipient, setBoxOfferRecipient] = useState('');
+  const [boxOfferMessage, setBoxOfferMessage] = useState('');
+  const [boxOfferSendMode, setBoxOfferSendMode] = useState<'email' | 'notification'>('email');
+  const [boxOfferPaymentMethod, setBoxOfferPaymentMethod] = useState<'cashback' | 'card'>('cashback');
+  const [boxOfferSending, setBoxOfferSending] = useState(false);
+  const [boxPdfExporting, setBoxPdfExporting] = useState(false);
+  const [selectionUpConfig, setSelectionUpConfig] = useState<CarteUpLibre[]>([]);
   const [selectionUpPartners, setSelectionUpPartners] = useState<Partner[]>([]);
-const [contentLoading, setContentLoading] = useState(false);
-const [contentError, setContentError] = useState<string | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [infoCardType, setInfoCardType] = useState<'selection_up' | 'carte_up' | 'box_up' | null>(null);
+  const selectionVideo = useGiftVideo({
+    onVideoRecorded: () =>
+      Alert.alert('Vidéo enregistrée', 'Votre vidéo a bien été enregistrée. Vous pouvez la visionner ci-dessous.'),
+  });
+  const predefinedVideo = useGiftVideo({
+    onVideoRecorded: () =>
+      Alert.alert('Vidéo enregistrée', 'Votre vidéo a bien été enregistrée. Vous pouvez la visionner ci-dessous.'),
+  });
+  const boxVideo = useGiftVideo({
+    onVideoRecorded: () =>
+      Alert.alert('Vidéo enregistrée', 'Votre vidéo a bien été enregistrée. Vous pouvez la visionner ci-dessous.'),
+  });
 
   const {
     data: giftCardData,
@@ -333,10 +385,10 @@ const [contentError, setContentError] = useState<string | null>(null);
     purchasing,
     purchaseError,
   } = useGiftCards();
-  const { data: walletData } = useWallet();
+  const { data: walletData, refetch: refetchWallet } = useWallet();
   const { data: rewardsData } = useRewards();
   const cashback = walletData?.wallet?.soldeCashback ?? null;
-  const points = rewardsData?.summary?.points ?? null;
+  const points = walletData?.wallet?.soldePoints ?? rewardsData?.summary?.points ?? null;
   const { initPaymentSheet, presentPaymentSheet } = usePaymentSheet();
 
   // Écouter les événements webhook pour rafraîchir automatiquement les cartes cadeaux
@@ -389,22 +441,19 @@ const [contentError, setContentError] = useState<string | null>(null);
     return Array.from(seen.values());
   }, [catalog, eligiblePartnerIds]);
 
-  /** Pour Carte Sélection UP : partenaires issus de l’API, éventuellement filtrés par config */
+  /** Pour Carte Sélection UP : partenaires issus de l’API (tous les partenaires de l’app) */
   const selectionUpPartnerOptions = useMemo<Partner[]>(() => {
     if (selectionUpPartners.length === 0) return [];
-    if (eligiblePartnerIds.size > 0) {
-      return selectionUpPartners.filter((p) => eligiblePartnerIds.has(p.id));
-    }
     return selectionUpPartners;
-  }, [selectionUpPartners, eligiblePartnerIds]);
+  }, [selectionUpPartners]);
 
-  /** Liste utilisée par le sélecteur : API partenaires en onglet Carte Sélection UP, sinon catalogue */
+  /** Liste utilisée par le sélecteur : en flow Carte Sélection UP -> partenaires API, sinon catalogue */
   const partnerOptions = useMemo<Partner[]>(() => {
-    if (activeTab === 'cartes-up' && cartesUpSubTab === 'selection') {
+    if (viewMode === 'selection_flow') {
       return selectionUpPartnerOptions;
     }
     return partnerOptionsFromCatalog;
-  }, [activeTab, cartesUpSubTab, selectionUpPartnerOptions, partnerOptionsFromCatalog]);
+  }, [viewMode, selectionUpPartnerOptions, partnerOptionsFromCatalog]);
 
   /** Map partenaireId -> logoUrl pour afficher les logos dans les Box UP */
   const partnerLogoMap = useMemo(() => {
@@ -535,8 +584,8 @@ const [contentError, setContentError] = useState<string | null>(null);
     }
   }, []);
 
-  /** Utilisé par le modal Offrir (mode e-mail) pour générer le PDF après envoi API */
-  const buildSelectionCardHtmlForPdf = () => {
+  /** Utilisé par le modal Offrir (mode e-mail) pour générer le PDF après envoi API. Si videoLinkUrl est fourni, un lien "Voir la vidéo" est ajouté au PDF. */
+  const buildSelectionCardHtmlForPdf = (videoLinkUrl?: string) => {
     const escapeHtml = (s: string) =>
       String(s)
         .replace(/&/g, '&amp;')
@@ -580,6 +629,8 @@ const [contentError, setContentError] = useState<string | null>(null);
   .card-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:8px;}
   .macaron{display:inline-block;padding:3px 7px;border-radius:9px;font-size:8px;font-weight:700;color:#fff;background-color:${macaronBgColor};-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .logo-wrap{width:36px;height:36px;border-radius:18px;overflow:hidden;border:1px solid #e2e8f0;background:#fff;}
+  .video-link{margin-top:16px;padding:10px;text-align:center;font-size:12px;}
+  .video-link a{color:#047857;text-decoration:underline;}
 </style></head><body>
   <div class="card" style="background:${bgColor}">
     <div class="card-img-wrap">${imageSection}
@@ -594,6 +645,7 @@ const [contentError, setContentError] = useState<string | null>(null);
       </div>
     </div>
   </div>
+  ${videoLinkUrl ? `<div class="video-link"><a href="${escapeHtml(videoLinkUrl)}">Voir la vidéo du cadeau</a></div>` : ''}
 </body></html>`;
   };
 
@@ -613,6 +665,7 @@ const [contentError, setContentError] = useState<string | null>(null);
     }
     setSelectionOfferRecipient('');
     setSelectionOfferSendMode('notification');
+    selectionVideo.clearVideo();
     setSelectionOfferModalVisible(true);
   };
 
@@ -627,8 +680,15 @@ const [contentError, setContentError] = useState<string | null>(null);
       Alert.alert('Montant invalide', 'Saisissez un montant valide (supérieur à 0) pour envoyer la carte.');
       return;
     }
-    const messageForApi = [selectionMacaron || selectionMacaronLibre, personalMessage].filter(Boolean).join('\n\n') || undefined;
-    const payload = { amount: amountValue, beneficiaryEmail: email, message: messageForApi, partnerId: personalPartnerId || undefined, partnerName: personalPartner?.name };
+    const messageForApi =
+      [selectionMacaron || selectionMacaronLibre, personalMessage].filter(Boolean).join('\n\n') || undefined;
+    const payload = {
+      amount: amountValue,
+      beneficiaryEmail: email,
+      message: messageForApi,
+      partnerId: personalPartnerId || undefined,
+      partnerName: personalPartner?.name,
+    };
     try {
       setSelectionOfferSending(true);
       if (selectionPaymentMethod === 'card') {
@@ -644,12 +704,57 @@ const [contentError, setContentError] = useState<string | null>(null);
           return;
         }
         const result = await confirmCardPaymentForGift({ paymentIntentId, giftType: 'selection_up', ...payload });
+        if (
+          selectionVideo.hasVideo &&
+          selectionVideo.videoUri &&
+          selectionVideo.videoDurationSeconds &&
+          selectionVideo.consentAccepted &&
+          result.purchaseId
+        ) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: selectionVideo.videoUri,
+              requestedVideoDuration: selectionVideo.videoDurationSeconds,
+              videoDurationOption: selectionVideo.videoDurationOption,
+              consentAccepted: selectionVideo.consentAccepted,
+            });
+          } catch {
+            // ne bloque pas l'envoi
+          }
+        }
         setSelectionOfferModalVisible(false);
         Alert.alert('Carte envoyée', result?.message ?? 'Le destinataire a été notifié dans l\'app.');
       } else {
+        const okDebit = await confirmWalletDebit({
+          amount: amountValue,
+          cashbackRate: selectionUpConfigActive?.cashbackRate ?? null,
+        });
+        if (!okDebit) return;
         const result = await sendSelectionUp(payload);
+        if (
+          selectionVideo.hasVideo &&
+          selectionVideo.videoUri &&
+          selectionVideo.videoDurationSeconds &&
+          selectionVideo.consentAccepted &&
+          result.purchaseId
+        ) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: selectionVideo.videoUri,
+              requestedVideoDuration: selectionVideo.videoDurationSeconds,
+              videoDurationOption: selectionVideo.videoDurationOption,
+              consentAccepted: selectionVideo.consentAccepted,
+            });
+          } catch {
+            // idem
+          }
+        }
         setSelectionOfferModalVisible(false);
-        const msg = (result as { data?: { message?: string }; message?: string })?.data?.message ?? (result as { message?: string })?.message;
+        const msg =
+          (result as { data?: { message?: string } })?.data?.message ??
+          (result as { message?: string })?.message;
         Alert.alert('Carte envoyée', msg ?? 'Le destinataire a été notifié dans l\'app.');
       }
       addNotification({
@@ -658,6 +763,7 @@ const [contentError, setContentError] = useState<string | null>(null);
         description: `${personalPartner?.name ?? 'KashUP'} • ${formatCurrency(amountValue)}`,
       });
       await refetchGiftCards();
+      await refetchWallet();
     } catch (error) {
       const status = (error as ApiError)?.statusCode ?? (error as { response?: { status?: number } })?.response?.status;
       if (status === 401) await logout();
@@ -684,10 +790,18 @@ const [contentError, setContentError] = useState<string | null>(null);
       Alert.alert('Montant invalide', 'Saisissez un montant valide (supérieur à 0) pour envoyer la carte.');
       return;
     }
-    const messageForApi = [selectionMacaron || selectionMacaronLibre, personalMessage].filter(Boolean).join('\n\n') || undefined;
-    const payload = { amount: amountValue, beneficiaryEmail: email, message: messageForApi, partnerId: personalPartnerId || undefined, partnerName: personalPartner?.name };
+    const messageForApi =
+      [selectionMacaron || selectionMacaronLibre, personalMessage].filter(Boolean).join('\n\n') || undefined;
+    const payload = {
+      amount: amountValue,
+      beneficiaryEmail: email,
+      message: messageForApi,
+      partnerId: personalPartnerId || undefined,
+      partnerName: personalPartner?.name,
+    };
     try {
       setSelectionOfferSending(true);
+      let purchaseId: string | undefined;
       if (selectionPaymentMethod === 'card') {
         const { clientSecret, paymentIntentId } = await createGiftCardPaymentIntent({ giftType: 'selection_up', ...payload });
         const { error: initErr } = await initPaymentSheet({ paymentIntentClientSecret: clientSecret, merchantDisplayName: 'KashUP' });
@@ -700,12 +814,61 @@ const [contentError, setContentError] = useState<string | null>(null);
           if (presentErr.code !== 'Canceled') Alert.alert('Paiement', presentErr.message ?? 'Paiement annulé ou échoué.');
           return;
         }
-        await confirmCardPaymentForGift({ paymentIntentId, giftType: 'selection_up', ...payload });
+        const result = await confirmCardPaymentForGift({ paymentIntentId, giftType: 'selection_up', ...payload });
+        purchaseId = result.purchaseId;
+        if (
+          selectionVideo.hasVideo &&
+          selectionVideo.videoUri &&
+          selectionVideo.videoDurationSeconds &&
+          selectionVideo.consentAccepted &&
+          result.purchaseId
+        ) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: selectionVideo.videoUri,
+              requestedVideoDuration: selectionVideo.videoDurationSeconds,
+              videoDurationOption: selectionVideo.videoDurationOption,
+              consentAccepted: selectionVideo.consentAccepted,
+            });
+          } catch {
+            // n'empêche pas la génération du PDF
+          }
+        }
       } else {
-        await sendSelectionUp(payload);
+        const okDebit = await confirmWalletDebit({
+          amount: amountValue,
+          cashbackRate: selectionUpConfigActive?.cashbackRate ?? null,
+        });
+        if (!okDebit) return;
+        const result = await sendSelectionUp(payload);
+        purchaseId = result.purchaseId;
+        if (
+          selectionVideo.hasVideo &&
+          selectionVideo.videoUri &&
+          selectionVideo.videoDurationSeconds &&
+          selectionVideo.consentAccepted &&
+          result.purchaseId
+        ) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: selectionVideo.videoUri,
+              requestedVideoDuration: selectionVideo.videoDurationSeconds,
+              videoDurationOption: selectionVideo.videoDurationOption,
+              consentAccepted: selectionVideo.consentAccepted,
+            });
+          } catch {
+            // idem
+          }
+        }
       }
+      const videoLinkUrl =
+        purchaseId && selectionVideo.hasVideo && selectionVideo.consentAccepted
+          ? `${getApiBaseUrl()}/gift-cards/orders/${purchaseId}/video`
+          : undefined;
       try {
-        const html = buildSelectionCardHtmlForPdf();
+        const html = buildSelectionCardHtmlForPdf(videoLinkUrl);
         const { uri } = await Print.printToFileAsync({ html, width: 340, height: 380 });
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
@@ -727,6 +890,7 @@ const [contentError, setContentError] = useState<string | null>(null);
         description: `${formatCurrency(amountValue)} • PDF prêt à envoyer`,
       });
       await refetchGiftCards();
+      await refetchWallet();
     } catch (error) {
       const status = (error as ApiError)?.statusCode ?? (error as { response?: { status?: number } })?.response?.status;
       if (status === 401) await logout();
@@ -749,6 +913,7 @@ const [contentError, setContentError] = useState<string | null>(null);
     setPredefinedFontId(FONT_OPTIONS_CARTE[0].id);
     setPredefinedTextColorId(TEXT_COLORS_CARTE[0].id);
     setPredefinedBackgroundColorId(BACKGROUND_COLORS_CARTE[0].id);
+    predefinedVideo.clearVideo();
     setPredefinedModalVisible(true);
   };
 
@@ -807,19 +972,64 @@ const [contentError, setContentError] = useState<string | null>(null);
           beneficiaryEmail: email,
           message: predefinedMessage.trim() || undefined,
         });
+        if (
+          predefinedVideo.hasVideo &&
+          predefinedVideo.videoUri &&
+          predefinedVideo.videoDurationSeconds &&
+          predefinedVideo.consentAccepted &&
+          result.purchaseId
+        ) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: predefinedVideo.videoUri,
+              requestedVideoDuration: predefinedVideo.videoDurationSeconds,
+              videoDurationOption: predefinedVideo.videoDurationOption,
+              consentAccepted: predefinedVideo.consentAccepted,
+            });
+          } catch {
+            // ne bloque pas l'envoi
+          }
+        }
         setPredefinedModalVisible(false);
         Alert.alert('Cadeau envoyé', result?.message ?? "Le destinataire a été notifié dans l'app.");
       } else {
+        const amountValue = Number((selectedPredefinedGift as any).price ?? (selectedPredefinedGift as any).montant ?? 0);
+        const okDebit = await confirmWalletDebit({
+          amount: amountValue,
+          cashbackRate: (selectedPredefinedGift as any).cashbackRate ?? null,
+        });
+        if (!okDebit) return;
         const result = await sendPredefinedGift({
           offerId: selectedPredefinedGift.id,
           beneficiaryEmail: email,
           message: predefinedMessage.trim() || undefined,
         });
+        if (
+          predefinedVideo.hasVideo &&
+          predefinedVideo.videoUri &&
+          predefinedVideo.videoDurationSeconds &&
+          predefinedVideo.consentAccepted &&
+          result.purchaseId
+        ) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: predefinedVideo.videoUri,
+              requestedVideoDuration: predefinedVideo.videoDurationSeconds,
+              videoDurationOption: predefinedVideo.videoDurationOption,
+              consentAccepted: predefinedVideo.consentAccepted,
+            });
+          } catch {
+            // idem
+          }
+        }
         setPredefinedModalVisible(false);
         const msg = (result as { data?: { message?: string }; message?: string })?.data?.message ?? (result as { message?: string })?.message;
         Alert.alert('Cadeau envoyé', msg ?? "Le destinataire a été notifié dans l'app.");
       }
       await refetchGiftCards();
+      await refetchWallet();
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
         ?? (err as { message?: string })?.message
@@ -904,10 +1114,13 @@ const [contentError, setContentError] = useState<string | null>(null);
         partenaire: v.giftCard.partner?.name ?? v.giftCard.name,
         montant: v.amount,
         expiration: formatDate(v.expiresAt),
+        purchaseId: v.id,
         partnerId: partner?.id ?? null,
         logoUrl: partner?.logoUrl ?? null,
         locationText: locationText ?? null,
         mapUrl,
+        videoStatus: v.videoStatus ?? undefined,
+        videoDurationSeconds: v.videoDurationSeconds ?? undefined,
       };
     };
 
@@ -1012,8 +1225,8 @@ const [contentError, setContentError] = useState<string | null>(null);
   );
 
   /** Bloc sticky : uniquement « Aperçu en direct » + carte (le scroll s’arrête ici) */
-  const renderSelectionUpCardStickyBlock = () => (
-    <View style={[styles.stickyCardBlock, { paddingTop: getBandeauStickyOffset(insets) }]}>
+  const renderSelectionUpCardStickyBlock = (opts?: { noStickyOffset?: boolean }) => (
+    <View style={[styles.stickyCardBlock, !opts?.noStickyOffset && { paddingTop: getBandeauStickyOffset(insets) }]}>
       <Text style={[styles.sectionLabel, { marginBottom: spacing.sm }]}>Aperçu en direct</Text>
       <View
             style={[
@@ -1328,6 +1541,538 @@ const [contentError, setContentError] = useState<string | null>(null);
     </View>
   );
 
+  const SELECTION_STEPS = [
+    'Partenaire',
+    'Montant',
+    'Macaron',
+    'Image',
+    'Style de la carte',
+    'Bénéficiaire',
+    'Vidéo',
+    'Envoi et confirmation',
+  ];
+
+  const renderSelectionUpWizard = () => {
+    const showCardPreview = selectionStep <= 5;
+    const isLastStep = selectionStep === 7;
+    return (
+      <View style={styles.wizardContainer}>
+        <TouchableOpacity onPress={() => setShowCartesUpInfoModal(true)} style={styles.moduleInfoTrigger}>
+          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+          <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche ?</Text>
+        </TouchableOpacity>
+        {showCardPreview && (
+          <View style={[styles.section, { marginBottom: spacing.md }]}>
+            <Text style={[styles.sectionLabel, { marginBottom: spacing.sm }]}>Aperçu de la carte</Text>
+            {renderSelectionUpCardStickyBlock({ noStickyOffset: true })}
+          </View>
+        )}
+        <View style={[styles.section, styles.purchaseCard]}>
+          <Text style={[styles.sectionLabel, { marginBottom: spacing.sm }]}>{SELECTION_STEPS[selectionStep]}</Text>
+          {selectionStep === 0 && (
+            <>
+              <Text style={styles.sectionLabel}>Partenaire</Text>
+              {renderPartnerSelector('personal')}
+            </>
+          )}
+          {selectionStep === 1 && (
+            <>
+              <Text style={styles.sectionLabel}>Montant (€)</Text>
+              {allowedAmounts.length > 0 && (
+                <Text style={[styles.offerSubtitle, { marginBottom: 4 }]}>
+                  Montants disponibles : {allowedAmounts.map((a) => `${a} €`).join(', ')}
+                </Text>
+              )}
+              <TextInput
+                style={styles.input}
+                keyboardType="decimal-pad"
+                placeholder={allowedAmounts.length > 0 ? `Ex : ${allowedAmounts[0]}` : 'Ex : 50'}
+                value={personalAmount}
+                onChangeText={setPersonalAmount}
+              />
+              <Text style={[styles.sectionLabel, { marginTop: spacing.md }]}>Message (texte)</Text>
+              <TextInput
+                style={[styles.input, styles.inputMultiline]}
+                placeholder="Un mot doux pour accompagner la carte"
+                multiline
+                value={personalMessage}
+                onChangeText={setPersonalMessage}
+              />
+            </>
+          )}
+          {selectionStep === 2 && (
+            <>
+              <View style={styles.macaronDropdownWrap}>
+                <TouchableOpacity
+                  style={[styles.macaronDropdownTrigger, macaronDropdownOpen && styles.macaronDropdownTriggerOpen]}
+                  onPress={() => setMacaronDropdownOpen((o) => !o)}
+                  activeOpacity={0.7}>
+                  <Text style={styles.macaronDropdownTriggerText} numberOfLines={1}>
+                    {selectionMacaron ? selectionMacaron : selectionMacaronLibre.trim() ? `Pastille libre : ${selectionMacaronLibre.trim()}` : 'Choisir un macaron'}
+                  </Text>
+                  <Ionicons name={macaronDropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+                {macaronDropdownOpen ? (
+                  <View style={styles.macaronSelect}>
+                    {MACARON_PRESETS.map((label) => (
+                      <TouchableOpacity
+                        key={label}
+                        style={[styles.macaronOption, selectionMacaron === label && styles.macaronOptionActive]}
+                        onPress={() => { setSelectionMacaron(selectionMacaron === label ? '' : label); if (selectionMacaron !== label) setSelectionMacaronLibre(''); setMacaronDropdownOpen(false); }}>
+                        <Ionicons name={selectionMacaron === label ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={selectionMacaron === label ? colors.primaryPurple : colors.textSecondary} />
+                        <Text style={[styles.macaronOptionText, selectionMacaron === label && styles.macaronOptionTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity
+                      style={[styles.macaronOption, styles.macaronOptionLast, selectionMacaron === '' && !selectionMacaronLibre.trim() && styles.macaronOptionActive]}
+                      onPress={() => { setSelectionMacaron(''); setMacaronDropdownOpen(false); }}>
+                      <Ionicons name={selectionMacaron === '' && !selectionMacaronLibre.trim() ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={colors.textSecondary} />
+                      <Text style={[styles.macaronOptionText, selectionMacaron === '' && !selectionMacaronLibre.trim() && styles.macaronOptionTextActive]}>Pastille libre</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+              {selectionMacaron === '' && (
+                <View style={styles.macaronLibreRow}>
+                  <Text style={styles.configMetaText}>Texte du macaron (pastille libre)</Text>
+                  <TextInput style={styles.input} placeholder="Ex : Merci pour tout..." value={selectionMacaronLibre} onChangeText={setSelectionMacaronLibre} />
+                </View>
+              )}
+            </>
+          )}
+          {selectionStep === 3 && (
+            <>
+              <View style={styles.imagePickerRow}>
+                <TouchableOpacity style={styles.imagePickerButton} onPress={pickSelectionImage}>
+                  <Ionicons name="image-outline" size={22} color={colors.primaryPurple} />
+                  <Text style={styles.imagePickerButtonText}>{selectionImageUri ? "Changer l'image" : 'Choisir une image'}</Text>
+                </TouchableOpacity>
+                {selectionImageUri ? (
+                  <TouchableOpacity style={styles.imagePickerRemove} onPress={() => setSelectionImageUri(null)}>
+                    <Ionicons name="close-circle" size={22} color={colors.textSecondary} />
+                    <Text style={styles.imagePickerRemoveText}>Supprimer</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {selectionImageUri ? (
+                <View style={styles.imagePickerPreviewWrap}>
+                  <Image source={{ uri: selectionImageUri }} style={styles.imagePickerPreview} resizeMode="cover" />
+                </View>
+              ) : null}
+            </>
+          )}
+          {selectionStep === 4 && (
+            <>
+              <Text style={styles.configMetaText}>Police du texte</Text>
+              <View style={styles.fontRow}>
+                {FONT_OPTIONS_CARTE.map((f) => (
+                  <TouchableOpacity key={f.id} onPress={() => setSelectionFontId(f.id)} style={[styles.fontChip, selectionFontId === f.id && styles.fontChipActive]}>
+                    <Text style={[styles.fontChipLabel, selectionFontId === f.id && styles.fontChipLabelActive]}>{f.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={[styles.colorBlockLabel, { marginTop: spacing.sm }]}>Couleur texte</Text>
+              <View style={styles.colorSwatchRow}>
+                {TEXT_COLORS_CARTE.map((c) => (
+                  <TouchableOpacity key={c.id} onPress={() => setSelectionTextColorId(c.id)} style={[styles.colorSwatch, { backgroundColor: c.value }, selectionTextColorId === c.id && styles.colorSwatchActive]} />
+                ))}
+              </View>
+              <Text style={styles.colorBlockLabel}>Couleur macaron</Text>
+              <View style={styles.colorSwatchRow}>
+                {MACARON_COLORS_CARTE.map((c) => (
+                  <TouchableOpacity key={c.id} onPress={() => setSelectionMacaronColorId(c.id)} style={[styles.colorSwatch, { backgroundColor: c.value }, selectionMacaronColorId === c.id && styles.colorSwatchActive]} />
+                ))}
+              </View>
+              <Text style={styles.colorBlockLabel}>Fond de la carte</Text>
+              <View style={styles.colorSwatchRow}>
+                {BACKGROUND_COLORS_CARTE.map((c) => (
+                  <TouchableOpacity key={c.id} onPress={() => setSelectionBackgroundColorId(c.id)} style={[styles.colorSwatch, { backgroundColor: c.value }, selectionBackgroundColorId === c.id && styles.colorSwatchActive]} />
+                ))}
+              </View>
+            </>
+          )}
+          {selectionStep === 5 && (
+            <>
+              <Text style={styles.sectionLabel}>Nom du bénéficiaire</Text>
+              <TextInput style={styles.input} placeholder="Prénom Nom" value={personalRecipient} onChangeText={setPersonalRecipient} />
+            </>
+          )}
+          {selectionStep === 6 && (
+            <View style={styles.videoStepBlock}>
+              <Text style={styles.videoStepTitle}>Ajoutez de l'émotion à votre cadeau</Text>
+              <View style={styles.videoStepButtons}>
+                <TouchableOpacity style={styles.videoStepButton} onPress={selectionVideo.recordVideo} activeOpacity={0.8}>
+                  <Ionicons name="videocam-outline" size={32} color={colors.primaryPurple} />
+                  <Text style={styles.videoStepButtonText}>Prendre une vidéo en direct</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.videoStepButton} onPress={selectionVideo.pickVideo} activeOpacity={0.8}>
+                  <Ionicons name="images-outline" size={32} color={colors.primaryPurple} />
+                  <Text style={styles.videoStepButtonText}>Télécharger une vidéo</Text>
+                </TouchableOpacity>
+              </View>
+              {selectionVideo.hasVideo && selectionVideo.videoUri && (
+                <>
+                  <GiftVideoPreview
+                    videoUri={selectionVideo.videoUri}
+                    videoDurationSeconds={selectionVideo.videoDurationSeconds}
+                    onRemove={selectionVideo.clearVideo}
+                    sendWithLabel="Cette vidéo sera envoyée avec votre carte."
+                  />
+                  <View style={{ marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity onPress={() => selectionVideo.setVideoDurationOption(selectionVideo.videoDurationOption === 'default' ? 'extended' : 'default')} style={styles.cartesUpInfoPill}>
+                      <Text style={styles.cartesUpInfoPillText}>{selectionVideo.videoDurationOption === 'extended' ? 'Durée étendue' : 'Durée standard'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => selectionVideo.setConsentAccepted(!selectionVideo.consentAccepted)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name={selectionVideo.consentAccepted ? 'checkbox-outline' : 'square-outline'} size={20} color={colors.primaryPurple} />
+                      <Text style={styles.sectionLabel}>J'accepte le stockage</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
+          {selectionStep === 7 && (
+            <>
+              <Text style={styles.sectionLabel}>Mode d'envoi</Text>
+              <View style={styles.sendModeRow}>
+                <TouchableOpacity style={[styles.sendModeCard, selectionOfferSendMode === 'email' && styles.sendModeCardActive]} onPress={() => setSelectionOfferSendMode('email')} activeOpacity={0.8}>
+                  <Ionicons name="mail-outline" size={24} color={selectionOfferSendMode === 'email' ? colors.white : colors.primaryPurple} />
+                  <Text style={[styles.sendModeTitle, selectionOfferSendMode === 'email' && styles.sendModeTitleActive]}>E-mail</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.sendModeCard, selectionOfferSendMode === 'notification' && styles.sendModeCardActive]} onPress={() => setSelectionOfferSendMode('notification')} activeOpacity={0.8}>
+                  <Ionicons name="notifications-outline" size={24} color={selectionOfferSendMode === 'notification' ? colors.white : colors.primaryPurple} />
+                  <Text style={[styles.sendModeTitle, selectionOfferSendMode === 'notification' && styles.sendModeTitleActive]}>Notification KashUP</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.sectionLabel}>Mode de paiement</Text>
+              <View style={styles.sendModeRow}>
+                <TouchableOpacity style={[styles.sendModeCard, selectionPaymentMethod === 'cashback' && styles.sendModeCardActive]} onPress={() => setSelectionPaymentMethod('cashback')} activeOpacity={0.8}>
+                  <Ionicons name="wallet-outline" size={24} color={selectionPaymentMethod === 'cashback' ? colors.white : colors.primaryPurple} />
+                  <Text style={[styles.sendModeTitle, selectionPaymentMethod === 'cashback' && styles.sendModeTitleActive]}>Cashback</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.sendModeCard, selectionPaymentMethod === 'card' && styles.sendModeCardActive]} onPress={() => setSelectionPaymentMethod('card')} activeOpacity={0.8}>
+                  <Ionicons name="card-outline" size={24} color={selectionPaymentMethod === 'card' ? colors.white : colors.primaryPurple} />
+                  <Text style={[styles.sendModeTitle, selectionPaymentMethod === 'card' && styles.sendModeTitleActive]}>Carte</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.sectionLabel}>Adresse e-mail du destinataire</Text>
+              <TextInput style={styles.input} placeholder="exemple@mail.com" value={selectionOfferRecipient} onChangeText={setSelectionOfferRecipient} keyboardType="email-address" autoCapitalize="none" />
+              <TouchableOpacity
+                style={[styles.primaryButton, selectionOfferSending && styles.primaryButtonDisabled]}
+                onPress={async () => {
+                  if (selectionOfferSendMode === 'notification') await confirmSelectionUpOfferNotification();
+                  else await confirmSelectionUpOfferEmail();
+                  setViewMode('landing');
+                }}
+                disabled={selectionOfferSending}>
+                <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+                  <Text style={styles.primaryText}>Confirmer et offrir</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+        {!isLastStep && (
+          <TouchableOpacity
+            style={[styles.primaryButton, { marginTop: spacing.lg, marginHorizontal: spacing.md }]}
+            onPress={() => setSelectionStep((s) => s + 1)}>
+            <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+              <Text style={styles.primaryText}>Suivant</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  const renderCarteUpWizard = () => {
+    const isLastStep = carteUpStep === 2;
+    return (
+      <View style={styles.wizardContainer}>
+        <TouchableOpacity onPress={() => setShowCartesUpInfoModal(true)} style={styles.moduleInfoTrigger}>
+          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+          <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche ?</Text>
+        </TouchableOpacity>
+        {carteUpStep === 0 && (
+          <View style={[styles.section, styles.purchaseCard]}>
+            <Text style={styles.sectionLabel}>Choisissez une Carte UP</Text>
+            {contentLoading ? <ActivityIndicator color={colors.primaryPurple} /> : offerTemplates.length === 0 ? <Text style={styles.placeholderText}>Aucune Carte UP.</Text> : offerTemplates.map((gift) => (
+              <PredefinedGiftCard key={gift.id} gift={gift} onOffer={() => { setSelectedPredefinedGift(gift); setCarteUpStep(1); }} />
+            ))}
+          </View>
+        )}
+        {carteUpStep === 1 && selectedPredefinedGift && (
+          <View style={[styles.section, styles.purchaseCard]}>
+            <Text style={styles.sectionLabel}>Vidéo (optionnel)</Text>
+            <View style={styles.videoStepBlock}>
+              <Text style={styles.videoStepTitle}>Ajoutez de l'émotion à votre cadeau</Text>
+              <View style={styles.videoStepButtons}>
+                <TouchableOpacity style={styles.videoStepButton} onPress={predefinedVideo.recordVideo} activeOpacity={0.8}>
+                  <Ionicons name="videocam-outline" size={32} color={colors.primaryPurple} />
+                  <Text style={styles.videoStepButtonText}>Prendre une vidéo en direct</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.videoStepButton} onPress={predefinedVideo.pickVideo} activeOpacity={0.8}>
+                  <Ionicons name="images-outline" size={32} color={colors.primaryPurple} />
+                  <Text style={styles.videoStepButtonText}>Télécharger une vidéo</Text>
+                </TouchableOpacity>
+              </View>
+              {predefinedVideo.hasVideo && predefinedVideo.videoUri && (
+                <>
+                  <GiftVideoPreview
+                    videoUri={predefinedVideo.videoUri}
+                    videoDurationSeconds={predefinedVideo.videoDurationSeconds}
+                    onRemove={predefinedVideo.clearVideo}
+                    sendWithLabel="Cette vidéo sera envoyée avec votre carte."
+                  />
+                  <View style={{ marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity onPress={() => predefinedVideo.setVideoDurationOption(predefinedVideo.videoDurationOption === 'default' ? 'extended' : 'default')} style={styles.cartesUpInfoPill}>
+                      <Text style={styles.cartesUpInfoPillText}>{predefinedVideo.videoDurationOption === 'extended' ? 'Durée étendue' : 'Durée standard'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => predefinedVideo.setConsentAccepted(!predefinedVideo.consentAccepted)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name={predefinedVideo.consentAccepted ? 'checkbox-outline' : 'square-outline'} size={20} color={colors.primaryPurple} />
+                      <Text style={styles.sectionLabel}>J'accepte le stockage</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        )}
+        {carteUpStep === 2 && selectedPredefinedGift && (
+          <View style={[styles.section, styles.purchaseCard]}>
+            <Text style={styles.sectionLabel}>Envoi et confirmation</Text>
+            <Text style={styles.sectionLabel}>Bénéficiaire</Text>
+            <TextInput style={styles.input} placeholder="Prénom Nom" value={predefinedBeneficiaryName} onChangeText={setPredefinedBeneficiaryName} />
+            <Text style={styles.sectionLabel}>E-mail du destinataire</Text>
+            <TextInput style={styles.input} placeholder="exemple@mail.com" value={predefinedRecipient} onChangeText={setPredefinedRecipient} keyboardType="email-address" />
+            <Text style={styles.sectionLabel}>Mode d'envoi</Text>
+            <View style={styles.sendModeRow}>
+              <TouchableOpacity style={[styles.sendModeCard, predefinedSendMode === 'email' && styles.sendModeCardActive]} onPress={() => setPredefinedSendMode('email')} activeOpacity={0.8}>
+                <Ionicons name="mail-outline" size={24} color={predefinedSendMode === 'email' ? colors.white : colors.primaryPurple} />
+                <Text style={[styles.sendModeTitle, predefinedSendMode === 'email' && styles.sendModeTitleActive]}>E-mail</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.sendModeCard, predefinedSendMode === 'notification' && styles.sendModeCardActive]} onPress={() => setPredefinedSendMode('notification')} activeOpacity={0.8}>
+                <Ionicons name="notifications-outline" size={24} color={predefinedSendMode === 'notification' ? colors.white : colors.primaryPurple} />
+                <Text style={[styles.sendModeTitle, predefinedSendMode === 'notification' && styles.sendModeTitleActive]}>Notification</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionLabel}>Mode de paiement</Text>
+            <View style={styles.sendModeRow}>
+              <TouchableOpacity style={[styles.sendModeCard, predefinedPaymentMethod === 'cashback' && styles.sendModeCardActive]} onPress={() => setPredefinedPaymentMethod('cashback')} activeOpacity={0.8}>
+                <Ionicons name="wallet-outline" size={24} color={predefinedPaymentMethod === 'cashback' ? colors.white : colors.primaryPurple} />
+                <Text style={[styles.sendModeTitle, predefinedPaymentMethod === 'cashback' && styles.sendModeTitleActive]}>Cashback</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.sendModeCard, predefinedPaymentMethod === 'card' && styles.sendModeCardActive]} onPress={() => setPredefinedPaymentMethod('card')} activeOpacity={0.8}>
+                <Ionicons name="card-outline" size={24} color={predefinedPaymentMethod === 'card' ? colors.white : colors.primaryPurple} />
+                <Text style={[styles.sendModeTitle, predefinedPaymentMethod === 'card' && styles.sendModeTitleActive]}>Carte</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.primaryButton, predefinedSending && styles.primaryButtonDisabled]} onPress={async () => { await confirmPredefinedGift(); setViewMode('landing'); }} disabled={predefinedSending}>
+              <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+                <Text style={styles.primaryText}>Confirmer et offrir</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+        {carteUpStep === 1 && (
+          <TouchableOpacity style={[styles.primaryButton, { marginTop: spacing.lg, marginHorizontal: spacing.md }]} onPress={() => setCarteUpStep(2)}>
+            <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+              <Text style={styles.primaryText}>Suivant</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  const renderBoxUpWizard = () => (
+    <View style={styles.wizardContainer}>
+      <TouchableOpacity onPress={() => setShowCartesUpInfoModal(true)} style={styles.moduleInfoTrigger}>
+        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+        <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche ?</Text>
+      </TouchableOpacity>
+      {boxUpStep === 0 && renderBoxTab({
+        onSelectBox: (box) => {
+          setSelectedBox(box);
+          boxVideo.clearVideo();
+          setBoxOfferRecipient('');
+          setBoxOfferMessage('');
+          setBoxOfferSendMode('email');
+          setBoxOfferPaymentMethod('cashback');
+          setBoxUpStep(1);
+        },
+      })}
+      {boxUpStep === 1 && (
+        <View style={[styles.section, styles.purchaseCard]}>
+          <Text style={styles.videoStepTitle}>Ajoutez de l'émotion à votre cadeau</Text>
+          <View style={styles.videoStepButtons}>
+            <TouchableOpacity style={styles.videoStepButton} onPress={boxVideo.recordVideo} activeOpacity={0.8}>
+              <Ionicons name="videocam-outline" size={32} color={colors.primaryPurple} />
+              <Text style={styles.videoStepButtonText}>Prendre une vidéo en direct</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.videoStepButton} onPress={boxVideo.pickVideo} activeOpacity={0.8}>
+              <Ionicons name="images-outline" size={32} color={colors.primaryPurple} />
+              <Text style={styles.videoStepButtonText}>Télécharger une vidéo</Text>
+            </TouchableOpacity>
+          </View>
+          {boxVideo.hasVideo && boxVideo.videoUri && (
+            <>
+              <GiftVideoPreview
+                videoUri={boxVideo.videoUri}
+                videoDurationSeconds={boxVideo.videoDurationSeconds}
+                onRemove={boxVideo.clearVideo}
+                sendWithLabel="Cette vidéo sera envoyée avec votre box."
+              />
+              <View style={{ marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <TouchableOpacity onPress={() => boxVideo.setVideoDurationOption(boxVideo.videoDurationOption === 'default' ? 'extended' : 'default')} style={styles.cartesUpInfoPill}>
+                  <Text style={styles.cartesUpInfoPillText}>{boxVideo.videoDurationOption === 'extended' ? 'Durée étendue' : 'Durée standard'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => boxVideo.setConsentAccepted(!boxVideo.consentAccepted)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name={boxVideo.consentAccepted ? 'checkbox-outline' : 'square-outline'} size={20} color={colors.primaryPurple} />
+                  <Text style={styles.sectionLabel}>J'accepte le stockage</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+          <TouchableOpacity style={[styles.primaryButton, { marginTop: spacing.lg }]} onPress={() => setBoxUpStep(2)}>
+            <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+              <Text style={styles.primaryText}>Suivant</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      )}
+      {boxUpStep === 2 && selectedBox && (
+        <View style={[styles.section, styles.purchaseCard]}>
+          <Text style={styles.sectionLabel}>Offrir cette Box</Text>
+          <Text style={styles.sectionLabel}>Mode d'envoi</Text>
+          <View style={styles.sendModeRow}>
+            <TouchableOpacity style={[styles.sendModeCard, boxOfferSendMode === 'email' && styles.sendModeCardActive]} onPress={() => setBoxOfferSendMode('email')} activeOpacity={0.8}>
+              <Ionicons name="mail-outline" size={24} color={boxOfferSendMode === 'email' ? colors.white : colors.primaryPurple} />
+              <Text style={[styles.sendModeTitle, boxOfferSendMode === 'email' && styles.sendModeTitleActive]}>E-mail</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.sendModeCard, boxOfferSendMode === 'notification' && styles.sendModeCardActive]} onPress={() => setBoxOfferSendMode('notification')} activeOpacity={0.8}>
+              <Ionicons name="notifications-outline" size={24} color={boxOfferSendMode === 'notification' ? colors.white : colors.primaryPurple} />
+              <Text style={[styles.sendModeTitle, boxOfferSendMode === 'notification' && styles.sendModeTitleActive]}>Notification</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.sectionLabel}>Mode de paiement</Text>
+          <View style={styles.sendModeRow}>
+            <TouchableOpacity style={[styles.sendModeCard, boxOfferPaymentMethod === 'cashback' && styles.sendModeCardActive]} onPress={() => setBoxOfferPaymentMethod('cashback')} activeOpacity={0.8}>
+              <Ionicons name="wallet-outline" size={24} color={boxOfferPaymentMethod === 'cashback' ? colors.white : colors.primaryPurple} />
+              <Text style={[styles.sendModeTitle, boxOfferPaymentMethod === 'cashback' && styles.sendModeTitleActive]}>Cashback</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.sendModeCard, boxOfferPaymentMethod === 'card' && styles.sendModeCardActive]} onPress={() => setBoxOfferPaymentMethod('card')} activeOpacity={0.8}>
+              <Ionicons name="card-outline" size={24} color={boxOfferPaymentMethod === 'card' ? colors.white : colors.primaryPurple} />
+              <Text style={[styles.sendModeTitle, boxOfferPaymentMethod === 'card' && styles.sendModeTitleActive]}>Carte</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.sectionLabel}>{boxOfferSendMode === 'email' ? 'Adresse e-mail' : 'E-mail du destinataire (compte KashUP)'}</Text>
+          <TextInput style={styles.input} placeholder="exemple@mail.com" value={boxOfferRecipient} onChangeText={setBoxOfferRecipient} keyboardType="email-address" autoCapitalize="none" />
+          <Text style={styles.sectionLabel}>Message</Text>
+          <TextInput style={[styles.input, styles.inputMultiline]} placeholder="Un message pour accompagner la box" value={boxOfferMessage} onChangeText={setBoxOfferMessage} multiline />
+
+          {boxOfferSendMode === 'email' ? (
+            <TouchableOpacity
+              style={[styles.primaryButton, boxPdfExporting && styles.primaryButtonDisabled]}
+              disabled={boxPdfExporting}
+              onPress={async () => {
+                if (!selectedBox) return;
+                try {
+                  setBoxPdfExporting(true);
+                  const title = selectedBox.title ?? selectedBox.nom ?? 'Box UP';
+                  const price = (selectedBox.priceFrom ?? selectedBox.value ?? 0).toFixed(0);
+                  const html = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><style>body{font-family:system-ui;padding:24px;} .card{max-width:320px;margin:0 auto;padding:20px;border:1px solid #e2e8f0;border-radius:12px;} h1{font-size:18px;margin:0 0 8px;} p{margin:4px 0;color:#334155;}</style></head><body><div class=\"card\"><h1>${title}</h1><p>${(selectedBox.shortDescription ?? selectedBox.description ?? '').substring(0, 200)}</p><p><strong>Valeur : ${price} €</strong></p></div></body></html>`;
+                  const { uri } = await Print.printToFileAsync({ html, width: 340, height: 400 });
+                  const canShare = await Sharing.isAvailableAsync();
+                  if (canShare) await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Partager la Box UP (PDF)' });
+                  else Alert.alert('Export PDF', "Le partage n'est pas disponible sur cet appareil. Le PDF a été généré.");
+                  setViewMode('landing');
+                } catch {
+                  Alert.alert('Erreur', 'Impossible de générer le PDF.');
+                } finally {
+                  setBoxPdfExporting(false);
+                }
+              }}>
+              <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+                <Text style={styles.primaryText}>{boxPdfExporting ? 'Génération du PDF…' : 'Télécharger / partager (PDF)'}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.primaryButton, boxOfferSending && styles.primaryButtonDisabled]}
+              disabled={boxOfferSending}
+              onPress={async () => {
+                if (!selectedBox) return;
+                const email = boxOfferRecipient.trim();
+                if (!email) {
+                  Alert.alert('E-mail requis', "Indiquez l'e-mail du compte KashUP du destinataire.");
+                  return;
+                }
+                const payload = { boxId: selectedBox.id, beneficiaryEmail: email, message: boxOfferMessage.trim() || undefined };
+                try {
+                  setBoxOfferSending(true);
+                  if (boxOfferPaymentMethod === 'card') {
+                    const { clientSecret, paymentIntentId } = await createGiftCardPaymentIntent({ giftType: 'box_up', ...payload });
+                    const { error: initErr } = await initPaymentSheet({ paymentIntentClientSecret: clientSecret, merchantDisplayName: 'KashUP' });
+                    if (initErr) {
+                      Alert.alert('Paiement', initErr.message ?? "Impossible d'ouvrir le paiement.");
+                      return;
+                    }
+                    const { error: presentErr } = await presentPaymentSheet();
+                    if (presentErr) {
+                      if (presentErr.code !== 'Canceled') Alert.alert('Paiement', presentErr.message ?? 'Paiement annulé ou échoué.');
+                      return;
+                    }
+                    const result = await confirmCardPaymentForGift({ paymentIntentId, giftType: 'box_up', ...payload });
+                    if (boxVideo.hasVideo && boxVideo.videoUri && boxVideo.videoDurationSeconds && boxVideo.consentAccepted && result.purchaseId) {
+                      try {
+                        await uploadGiftVideo({
+                          purchaseId: result.purchaseId,
+                          videoUri: boxVideo.videoUri,
+                          requestedVideoDuration: boxVideo.videoDurationSeconds,
+                          videoDurationOption: boxVideo.videoDurationOption,
+                          consentAccepted: boxVideo.consentAccepted,
+                        });
+                      } catch {
+                        // ne bloque pas l'envoi
+                      }
+                    }
+                    Alert.alert('Box envoyée', result?.message ?? "Le destinataire a été notifié dans l'app.");
+                  } else {
+                    const result = await sendBoxUp(payload);
+                    if (boxVideo.hasVideo && boxVideo.videoUri && boxVideo.videoDurationSeconds && boxVideo.consentAccepted && result.purchaseId) {
+                      try {
+                        await uploadGiftVideo({
+                          purchaseId: result.purchaseId,
+                          videoUri: boxVideo.videoUri,
+                          requestedVideoDuration: boxVideo.videoDurationSeconds,
+                          videoDurationOption: boxVideo.videoDurationOption,
+                          consentAccepted: boxVideo.consentAccepted,
+                        });
+                      } catch {
+                        // idem
+                      }
+                    }
+                    Alert.alert('Box envoyée', result.message ?? "Le destinataire a été notifié dans l'app.");
+                  }
+                  setViewMode('landing');
+                } catch (err: unknown) {
+                  const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as Error)?.message ?? 'Envoi impossible.';
+                  Alert.alert('Erreur', msg);
+                } finally {
+                  setBoxOfferSending(false);
+                }
+              }}>
+              <LinearGradient colors={[...CARD_GRADIENT_COLORS]} locations={[...CARD_GRADIENT_LOCATIONS]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+                <Text style={styles.primaryText}>{boxOfferSending ? 'Envoi…' : 'Confirmer et offrir'}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
   /** Carte Sélection UP : config (si présente) + formulaire + carte test toujours visibles */
   const renderCarteSelectionUpContent = () => (
     <View style={styles.buyContainer}>
@@ -1503,7 +2248,7 @@ const [contentError, setContentError] = useState<string | null>(null);
     </View>
   );
 
-  const renderBoxTab = () => (
+  const renderBoxTab = (opts?: { onSelectBox?: (box: GiftBox) => void }) => (
     <View style={styles.boxSection}>
       {contentLoading ? (
         <ActivityIndicator color={colors.primaryPurple} style={{ marginVertical: spacing.lg }} />
@@ -1606,7 +2351,7 @@ const [contentError, setContentError] = useState<string | null>(null);
               ) : null}
               <TouchableOpacity
                 style={styles.boxButtonWrap}
-                onPress={() => navigation.navigate('BoxUpDetail', { boxId: box.id, box })}>
+                onPress={() => (opts?.onSelectBox ? opts.onSelectBox(box) : navigation.navigate('BoxUpDetail', { boxId: box.id, box }))}>
                 <LinearGradient
                   colors={[...CARD_GRADIENT_COLORS]}
                   locations={[...CARD_GRADIENT_LOCATIONS]}
@@ -1649,6 +2394,23 @@ const [contentError, setContentError] = useState<string | null>(null);
           points={points}
           showPillsRow
           solidBackground
+          onBackPress={
+            viewMode !== 'landing'
+              ? () => {
+                  if (viewMode === 'mes_cartes') setViewMode('landing');
+                  else if (viewMode === 'selection_flow') {
+                    if (selectionStep > 0) setSelectionStep((s) => s - 1);
+                    else setViewMode('landing');
+                  } else if (viewMode === 'carte_up_flow') {
+                    if (carteUpStep > 0) setCarteUpStep((s) => s - 1);
+                    else setViewMode('landing');
+                  } else if (viewMode === 'box_up_flow') {
+                    if (boxUpStep > 0) setBoxUpStep((s) => s - 1);
+                    else setViewMode('landing');
+                  }
+                }
+              : undefined
+          }
         />
         <AnimatedScrollView
           style={styles.scrollFill}
@@ -1671,115 +2433,132 @@ const [contentError, setContentError] = useState<string | null>(null);
           refreshControl={<RefreshControl refreshing={giftCardsLoading} onRefresh={refetchGiftCards} />}
         >
         <View style={styles.pageHeader}>
-          <Text style={styles.pageTitle}>Cartes UP</Text>
+          <Text style={styles.pageTitle}>
+            {viewMode === 'selection_flow' ? 'Carte Sélection UP' : viewMode === 'carte_up_flow' ? 'Carte UP' : viewMode === 'box_up_flow' ? 'Box UP' : viewMode === 'mes_cartes' ? 'Mes cartes' : 'Cartes UP'}
+          </Text>
+          {viewMode === 'landing' && <Text style={styles.pageSubtitle}>Faites plaisir à vos proches.</Text>}
         </View>
-        {contentError ? (
+
+        {viewMode === 'landing' && contentError ? (
           <TouchableOpacity style={styles.errorBanner} onPress={loadEditorialContent}>
             <Text style={styles.errorBannerText}>{contentError}</Text>
             <Text style={styles.errorBannerCta}>Actualiser les cadeaux partenaires</Text>
           </TouchableOpacity>
-        ) : (
-          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
-        )}
+        ) : null}
 
-        <View style={styles.giftCardsTabs}>
-          {(['mes', 'cartes-up', 'box-up'] as TabKey[]).map((tab) => {
-            const active = activeTab === tab;
-            const label = tab === 'mes' ? 'Mes cartes' : tab === 'cartes-up' ? 'Cartes UP' : 'Box UP';
-            return (
+        {viewMode === 'landing' && (
+          <>
+            <View style={styles.cartesUpIntro}>
+              <View style={styles.cartesUpCardsRow}>
               <TouchableOpacity
-                key={tab}
-                style={[styles.giftCardsTabButtonWrap, active && styles.giftCardsTabButtonWrapActive]}
-                onPress={() => setActiveTab(tab)}
-                activeOpacity={0.85}>
-                {active ? (
-                  <LinearGradient
-                    colors={[...CARD_GRADIENT_COLORS]}
-                    locations={[...CARD_GRADIENT_LOCATIONS]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.giftCardsTabButton}>
-                    <Text style={styles.giftCardsTabButtonTextActive}>{label}</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={styles.giftCardsTabButton}>
-                    <Text style={styles.giftCardsTabButtonText}>{label}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <TouchableOpacity onPress={() => setShowCartesUpInfoModal(true)} style={styles.moduleInfoTrigger}>
-          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
-          <Text style={styles.moduleInfoTriggerText}>À quoi ça sert et comment ça marche</Text>
-        </TouchableOpacity>
-
-        {activeTab === 'mes' ? (
-          <View style={styles.section}>{renderMyVouchers()}</View>
-        ) : (
-          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
-        )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? (
-          <View>
-            <View style={styles.section}>
-              <View style={styles.internalTabs}>
-                {[
-                  { key: 'selection' as CartesUpSubTab, label: 'Carte Sélection UP' },
-                  { key: 'predefinie' as CartesUpSubTab, label: 'Carte UP' },
-                ].map(({ key, label }) => {
-                  const active = cartesUpSubTab === key;
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.internalTabButton, active && styles.internalTabButtonActive]}
-                      onPress={() => setCartesUpSubTab(key)}>
-                      <Text style={[styles.internalTabText, active && styles.internalTabTextActive]}>
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-            {renderSelectionUpAccordionsBlock()}
-          </View>
-        ) : (
-          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
-        )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'predefinie' ? (
-          <View style={styles.section}>
-            <View style={styles.internalTabs}>
-              {[
-                { key: 'selection' as CartesUpSubTab, label: 'Carte Sélection UP' },
-                { key: 'predefinie' as CartesUpSubTab, label: 'Carte UP' },
-              ].map(({ key, label }) => {
-                const active = cartesUpSubTab === key;
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.internalTabButton, active && styles.internalTabButtonActive]}
-                    onPress={() => setCartesUpSubTab(key)}>
-                    <Text style={[styles.internalTabText, active && styles.internalTabTextActive]}>
-                      {label}
+                style={styles.cartesUpCard}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setViewMode('selection_flow');
+                  setSelectionStep(0);
+                }}>
+                <ImageBackground
+                  source={{ uri: fallbackHeroImage }}
+                  style={styles.cartesUpCardImage}
+                  imageStyle={styles.cartesUpCardImageInner}>
+                  <View style={styles.cartesUpCardOverlay} />
+                  <View style={styles.cartesUpCardContent}>
+                    <Text style={styles.cartesUpCardTitle}>Carte Sélection UP</Text>
+                    <Text style={styles.cartesUpCardText}>
+                      Choisissez un partenaire et un montant, envoyez un cadeau ultra personnalisé.
                     </Text>
+                  </View>
+                </ImageBackground>
+                <View style={styles.cartesUpCardFooter}>
+                  <TouchableOpacity
+                    style={styles.cartesUpInfoPill}
+                    onPress={() => setInfoCardType('selection_up')}
+                    activeOpacity={0.8}>
+                    <Ionicons name="information-circle-outline" size={16} color={colors.primaryPurple} />
+                    <Text style={styles.cartesUpInfoPillText}>En savoir plus</Text>
                   </TouchableOpacity>
-                );
-              })}
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.cartesUpCard}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setViewMode('carte_up_flow');
+                  setCarteUpStep(0);
+                }}>
+                <ImageBackground
+                  source={{ uri: fallbackHeroImage }}
+                  style={styles.cartesUpCardImage}
+                  imageStyle={styles.cartesUpCardImageInner}>
+                  <View style={styles.cartesUpCardOverlay} />
+                  <View style={styles.cartesUpCardContent}>
+                    <Text style={styles.cartesUpCardTitle}>Carte UP</Text>
+                    <Text style={styles.cartesUpCardText}>
+                      Cartes prêtes à l’emploi, sélectionnées par KashUP, à envoyer en quelques secondes.
+                    </Text>
+                  </View>
+                </ImageBackground>
+                <View style={styles.cartesUpCardFooter}>
+                  <TouchableOpacity
+                    style={styles.cartesUpInfoPill}
+                    onPress={() => setInfoCardType('carte_up')}
+                    activeOpacity={0.8}>
+                    <Ionicons name="information-circle-outline" size={16} color={colors.primaryPurple} />
+                    <Text style={styles.cartesUpInfoPillText}>En savoir plus</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.cartesUpCard}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setViewMode('box_up_flow');
+                  setBoxUpStep(0);
+                }}>
+                <ImageBackground
+                  source={{ uri: fallbackHeroImage }}
+                  style={styles.cartesUpCardImage}
+                  imageStyle={styles.cartesUpCardImageInner}>
+                  <View style={styles.cartesUpCardOverlay} />
+                  <View style={styles.cartesUpCardContent}>
+                    <Text style={styles.cartesUpCardTitle}>Box UP</Text>
+                    <Text style={styles.cartesUpCardText}>
+                      Une vraie box cadeau physique, avec vos produits favoris et un message vidéo.
+                    </Text>
+                  </View>
+                </ImageBackground>
+                <View style={styles.cartesUpCardFooter}>
+                  <TouchableOpacity
+                    style={styles.cartesUpInfoPill}
+                    onPress={() => setInfoCardType('box_up')}
+                    activeOpacity={0.8}>
+                    <Ionicons name="information-circle-outline" size={16} color={colors.primaryPurple} />
+                    <Text style={styles.cartesUpInfoPillText}>En savoir plus</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
-        ) : (
-          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
+          <TouchableOpacity style={styles.moduleInfoTrigger} onPress={() => setViewMode('mes_cartes')}>
+            <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+            <Text style={styles.moduleInfoTriggerText}>Voir mes cartes</Text>
+          </TouchableOpacity>
+        </>
         )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? renderSelectionUpCardStickyBlock() : (
-          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
+
+        {viewMode === 'mes_cartes' && (
+          <View style={styles.section}>
+            {renderMyVouchers()}
+          </View>
         )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'selection' ? renderSelectionUpFormBlock() : (
-          <View style={styles.stickyIndexPlaceholder} collapsable={false} />
-        )}
-        {activeTab === 'cartes-up' && cartesUpSubTab === 'predefinie' && renderCarteUpContent()}
-        {activeTab === 'box-up' && renderBoxTab()}
+
+        {viewMode === 'selection_flow' && renderSelectionUpWizard()}
+
+        {viewMode === 'carte_up_flow' && renderCarteUpWizard()}
+
+        {viewMode === 'box_up_flow' && renderBoxUpWizard()}
       </AnimatedScrollView>
 
       </KeyboardAvoidingView>
@@ -1798,6 +2577,45 @@ const [contentError, setContentError] = useState<string | null>(null);
         onDeptChange={setPartnerDeptFilter}
       />
 
+      <Modal
+        visible={infoCardType != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInfoCardType(null)}>
+        <TouchableOpacity
+          style={styles.moduleInfoModalOverlay}
+          activeOpacity={1}
+          onPress={() => setInfoCardType(null)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.moduleInfoModalBox}>
+            <View style={styles.moduleInfoModalHeader}>
+              <Text style={styles.moduleInfoModalTitle}>
+                {infoCardType === 'selection_up'
+                  ? 'Carte Sélection UP'
+                  : infoCardType === 'carte_up'
+                  ? 'Carte UP'
+                  : 'Box UP'}
+              </Text>
+            </View>
+            <View style={styles.moduleInfoModalBody}>
+              <Text style={styles.moduleInfoModalText}>
+                {infoCardType === 'selection_up' &&
+                  "Vous choisissez un partenaire, un montant et un message. Le bénéficiaire reçoit une carte 100% digitale et personnalisable, valable chez ce partenaire."}
+                {infoCardType === 'carte_up' &&
+                  "Des cartes prêtes à l'emploi, créées par KashUP : vous sélectionnez l'offre, vous ajoutez un petit mot et vous envoyez la carte en quelques secondes."}
+                {infoCardType === 'box_up' &&
+                  "Vous composez une box cadeau physique (produits, expériences…) et vous l'associez à un message et, si vous le souhaitez, à une vidéo personnalisée."}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.moduleInfoModalClose} onPress={() => setInfoCardType(null)}>
+              <Text style={styles.moduleInfoModalCloseText}>Fermer</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <SelectionUpOfferModal
         visible={selectionOfferModalVisible}
         onClose={() => setSelectionOfferModalVisible(false)}
@@ -1813,6 +2631,15 @@ const [contentError, setContentError] = useState<string | null>(null);
         onPaymentMethodChange={setSelectionPaymentMethod}
         onConfirmNotification={confirmSelectionUpOfferNotification}
         onConfirmEmail={confirmSelectionUpOfferEmail}
+        videoHasVideo={selectionVideo.hasVideo}
+        videoDurationSeconds={selectionVideo.videoDurationSeconds}
+        videoDurationOption={selectionVideo.videoDurationOption}
+        onVideoDurationOptionChange={selectionVideo.setVideoDurationOption}
+        videoConsentAccepted={selectionVideo.consentAccepted}
+        onVideoConsentChange={selectionVideo.setConsentAccepted}
+        onPickVideo={selectionVideo.pickVideo}
+        onRecordVideo={selectionVideo.recordVideo}
+        onClearVideo={selectionVideo.clearVideo}
         unreadCount={unreadCount}
         cashback={cashback}
         points={points}
@@ -1849,6 +2676,15 @@ const [contentError, setContentError] = useState<string | null>(null);
         selectedBackgroundColorId={predefinedBackgroundColorId}
         onBackgroundColorChange={setPredefinedBackgroundColorId}
         onConfirm={confirmPredefinedGift}
+        videoHasVideo={predefinedVideo.hasVideo}
+        videoDurationSeconds={predefinedVideo.videoDurationSeconds}
+        videoDurationOption={predefinedVideo.videoDurationOption}
+        onVideoDurationOptionChange={predefinedVideo.setVideoDurationOption}
+        videoConsentAccepted={predefinedVideo.consentAccepted}
+        onVideoConsentChange={predefinedVideo.setConsentAccepted}
+        onPickVideo={predefinedVideo.pickVideo}
+        onRecordVideo={predefinedVideo.recordVideo}
+        onClearVideo={predefinedVideo.clearVideo}
         sending={predefinedSending}
         paymentMethod={predefinedPaymentMethod}
         onPaymentMethodChange={setPredefinedPaymentMethod}
@@ -2044,6 +2880,16 @@ type SelectionUpOfferModalProps = {
   onPaymentMethodChange?: (method: 'cashback' | 'card') => void;
   onConfirmNotification: () => void;
   onConfirmEmail: () => void;
+  /** Vidéo personnalisée (optionnel) */
+  videoHasVideo?: boolean;
+  videoDurationSeconds?: number | null;
+  videoDurationOption?: 'default' | 'extended';
+  onVideoDurationOptionChange?: (v: 'default' | 'extended') => void;
+  videoConsentAccepted?: boolean;
+  onVideoConsentChange?: (v: boolean) => void;
+  onPickVideo?: () => void;
+  onRecordVideo?: () => void;
+  onClearVideo?: () => void;
   /** Bandeau haut : points et cashback */
   cashback?: number | null;
   points?: number | null;
@@ -2073,6 +2919,15 @@ function SelectionUpOfferModal({
   onPaymentMethodChange,
   onConfirmNotification,
   onConfirmEmail,
+  videoHasVideo = false,
+  videoDurationSeconds = null,
+  videoDurationOption = 'default',
+  onVideoDurationOptionChange,
+  videoConsentAccepted = false,
+  onVideoConsentChange,
+  onPickVideo,
+  onRecordVideo,
+  onClearVideo,
   cashback,
   points,
   unreadCount = 0,
@@ -2174,6 +3029,71 @@ function SelectionUpOfferModal({
             <View style={[styles.purchaseCard, { marginTop: spacing.sm }]}>
               <Text style={styles.sectionLabel}>Nom du bénéficiaire</Text>
               <Text style={[styles.input, { color: colors.textMain }]}>{beneficiaryName || '—'}</Text>
+              {/* Vidéo personnalisée : notification = dans l'app ; e-mail = lien dans le PDF */}
+              <View style={{ marginTop: spacing.sm }}>
+                <Text style={styles.sectionLabel}>Vidéo personnalisée (optionnel)</Text>
+                <View style={styles.sendModeRow}>
+                  {onRecordVideo && (
+                    <TouchableOpacity
+                      style={[styles.sendModeCard, videoHasVideo && styles.sendModeCardActive]}
+                      onPress={onRecordVideo}
+                      activeOpacity={0.8}>
+                      <View style={[styles.sendModeIconWrap, videoHasVideo && styles.sendModeIconWrapActive]}>
+                        <Ionicons name="videocam-outline" size={24} color={videoHasVideo ? colors.white : colors.primaryPurple} />
+                      </View>
+                      <Text style={[styles.sendModeTitle, videoHasVideo && styles.sendModeTitleActive]}>
+                        {videoHasVideo ? 'Vidéo enregistrée' : 'Filmer'}
+                      </Text>
+                      {videoDurationSeconds != null && (
+                        <Text style={styles.sendModeSubtitle}>{videoDurationSeconds}s</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {onPickVideo && (
+                    <TouchableOpacity
+                      style={[styles.sendModeCard, videoHasVideo && styles.sendModeCardActive]}
+                      onPress={onPickVideo}
+                      activeOpacity={0.8}>
+                      <View style={[styles.sendModeIconWrap, videoHasVideo && styles.sendModeIconWrapActive]}>
+                        <Ionicons name="images-outline" size={24} color={videoHasVideo ? colors.white : colors.primaryPurple} />
+                      </View>
+                      <Text style={[styles.sendModeTitle, videoHasVideo && styles.sendModeTitleActive]}>Galerie</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {videoHasVideo && onVideoDurationOptionChange && (
+                  <>
+                    <Text style={[styles.sectionLabel, { marginTop: spacing.sm }]}>Durée max.</Text>
+                    <View style={styles.sendModeRow}>
+                      <TouchableOpacity
+                        style={[styles.sendModeCard, videoDurationOption === 'default' && styles.sendModeCardActive]}
+                        onPress={() => onVideoDurationOptionChange('default')}
+                        activeOpacity={0.8}>
+                        <Text style={[styles.sendModeTitle, videoDurationOption === 'default' && styles.sendModeTitleActive]}>Standard</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sendModeCard, videoDurationOption === 'extended' && styles.sendModeCardActive]}
+                        onPress={() => onVideoDurationOptionChange('extended')}
+                        activeOpacity={0.8}>
+                        <Text style={[styles.sendModeTitle, videoDurationOption === 'extended' && styles.sendModeTitleActive]}>Étendue</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {onVideoConsentChange && (
+                      <TouchableOpacity
+                        style={{ marginTop: spacing.xs, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                        onPress={() => onVideoConsentChange(!videoConsentAccepted)}
+                        activeOpacity={0.8}>
+                        <Ionicons
+                          name={videoConsentAccepted ? 'checkbox-outline' : 'square-outline'}
+                          size={20}
+                          color={videoConsentAccepted ? colors.primaryPurple : colors.textSecondary}
+                        />
+                        <Text style={[styles.sectionLabel, { flex: 1 }]}>J'accepte le stockage de cette vidéo pour ce cadeau.</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+              </View>
               <Text style={styles.sectionLabel}>Mode d'envoi</Text>
               <View style={styles.sendModeRow}>
                 <TouchableOpacity
@@ -2417,6 +3337,15 @@ type PredefinedGiftModalProps = {
   selectedBackgroundColorId: string;
   onBackgroundColorChange: (value: string) => void;
   onConfirm: () => void;
+  videoHasVideo?: boolean;
+  videoDurationSeconds?: number | null;
+  videoDurationOption?: 'default' | 'extended';
+  onVideoDurationOptionChange?: (v: 'default' | 'extended') => void;
+  videoConsentAccepted?: boolean;
+  onVideoConsentChange?: (v: boolean) => void;
+  onPickVideo?: () => void;
+  onRecordVideo?: () => void;
+  onClearVideo?: () => void;
   /** Envoi en cours (mode notification) */
   sending?: boolean;
   /** Mode de paiement : cashback ou carte (Apple Pay / Google Pay) */
@@ -2465,6 +3394,15 @@ function PredefinedGiftModal({
   selectedBackgroundColorId,
   onBackgroundColorChange,
   onConfirm,
+  videoHasVideo = false,
+  videoDurationSeconds = null,
+  videoDurationOption = 'default',
+  onVideoDurationOptionChange,
+  videoConsentAccepted = false,
+  onVideoConsentChange,
+  onPickVideo,
+  onRecordVideo,
+  onClearVideo,
   sending = false,
   paymentMethod = 'cashback',
   onPaymentMethodChange,
@@ -2905,6 +3843,72 @@ function PredefinedGiftModal({
             value={beneficiaryName}
             onChangeText={onBeneficiaryNameChange}
           />
+          {sendMode === 'notification' && (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text style={styles.sectionLabel}>Vidéo personnalisée (optionnel)</Text>
+              <View style={styles.sendModeRow}>
+                {onRecordVideo && (
+                  <TouchableOpacity
+                    style={[styles.sendModeCard, videoHasVideo && styles.sendModeCardActive]}
+                    onPress={onRecordVideo}
+                    activeOpacity={0.8}>
+                    <View style={[styles.sendModeIconWrap, videoHasVideo && styles.sendModeIconWrapActive]}>
+                      <Ionicons name="videocam-outline" size={24} color={videoHasVideo ? colors.white : colors.primaryPurple} />
+                    </View>
+                    <Text style={[styles.sendModeTitle, videoHasVideo && styles.sendModeTitleActive]}>
+                      {videoHasVideo ? 'Vidéo enregistrée' : 'Filmer'}
+                    </Text>
+                    {videoDurationSeconds != null && (
+                      <Text style={styles.sendModeSubtitle}>{videoDurationSeconds}s</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+                {onPickVideo && (
+                  <TouchableOpacity
+                    style={[styles.sendModeCard, videoHasVideo && styles.sendModeCardActive]}
+                    onPress={onPickVideo}
+                    activeOpacity={0.8}>
+                    <View style={[styles.sendModeIconWrap, videoHasVideo && styles.sendModeIconWrapActive]}>
+                      <Ionicons name="images-outline" size={24} color={videoHasVideo ? colors.white : colors.primaryPurple} />
+                    </View>
+                    <Text style={[styles.sendModeTitle, videoHasVideo && styles.sendModeTitleActive]}>Galerie</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {videoHasVideo && onVideoDurationOptionChange && (
+                <>
+                  <Text style={[styles.sectionLabel, { marginTop: spacing.sm }]}>Durée max.</Text>
+                  <View style={styles.sendModeRow}>
+                    <TouchableOpacity
+                      style={[styles.sendModeCard, videoDurationOption === 'default' && styles.sendModeCardActive]}
+                      onPress={() => onVideoDurationOptionChange('default')}
+                      activeOpacity={0.8}>
+                      <Text style={[styles.sendModeTitle, videoDurationOption === 'default' && styles.sendModeTitleActive]}>Standard</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sendModeCard, videoDurationOption === 'extended' && styles.sendModeCardActive]}
+                      onPress={() => onVideoDurationOptionChange('extended')}
+                      activeOpacity={0.8}>
+                      <Text style={[styles.sendModeTitle, videoDurationOption === 'extended' && styles.sendModeTitleActive]}>Étendue</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {onVideoConsentChange && (
+                    <TouchableOpacity
+                      style={{ marginTop: spacing.xs, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                      onPress={() => onVideoConsentChange(!videoConsentAccepted)}
+                      activeOpacity={0.8}>
+                      <Ionicons
+                        name={videoConsentAccepted ? 'checkbox-outline' : 'square-outline'}
+                        size={20}
+                        color={videoConsentAccepted ? colors.primaryPurple : colors.textSecondary}
+                      />
+                      <Text style={[styles.sectionLabel, { flex: 1 }]}>J'accepte le stockage de cette vidéo pour ce cadeau.</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </View>
+          )}
           <Text style={styles.sectionLabel}>Mode d'envoi</Text>
           <View style={styles.sendModeRow}>
             <TouchableOpacity
@@ -3752,9 +4756,121 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.textMain,
   },
+  pageSubtitle: {
+    marginTop: 4,
+    fontSize: 15,
+    fontStyle: 'italic',
+    fontWeight: '700',
+    color: colors.primaryPurple,
+  },
   purchaseDescription: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  cartesUpIntro: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  cartesUpCardsRow: {
+    flexDirection: 'column',
+    gap: spacing.md,
+  },
+  cartesUpCard: {
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    backgroundColor: colors.slateBackground,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  cartesUpCardImage: {
+    width: '100%',
+    height: 140,
+    justifyContent: 'flex-end',
+  },
+  cartesUpCardImageInner: {
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+  },
+  cartesUpCardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+  },
+  cartesUpCardContent: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  cartesUpCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.white,
+    marginBottom: 4,
+  },
+  cartesUpCardText: {
+    fontSize: 13,
+    color: '#E5E7EB',
+  },
+  cartesUpCardFooter: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
+  },
+  cartesUpInfoPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EEF2FF',
+  },
+  cartesUpInfoPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryPurple,
+  },
+  wizardContainer: {
+    paddingBottom: spacing.xl,
+  },
+  videoStepBlock: {
+    marginTop: spacing.sm,
+  },
+  videoStepTitle: {
+    fontSize: 22,
+    fontStyle: 'italic',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    color: colors.primary,
+  },
+  videoStepButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  videoStepButton: {
+    flex: 1,
+    minWidth: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    borderColor: colors.primaryPurple,
+    backgroundColor: '#EEF2FF',
+  },
+  videoStepButtonText: {
+    marginTop: spacing.sm,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primaryPurple,
   },
   sectionLabel: {
     fontSize: 13,

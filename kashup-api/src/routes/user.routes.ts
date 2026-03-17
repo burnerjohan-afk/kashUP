@@ -21,7 +21,9 @@ import {
   updateMyConsent,
   getMyConsent,
   exportMyDataHandler,
-  deleteMyAccountHandler
+  deleteMyAccountHandler,
+  postPushTokenHandler,
+  deletePushTokenHandler,
 } from '../controllers/user.controller';
 import { authMiddleware } from '../middlewares/auth';
 
@@ -52,6 +54,10 @@ router.get('/consent', getMyConsent);
 router.post('/consent', updateMyConsent);
 router.get('/export', exportMyDataHandler);
 router.delete('/account', deleteMyAccountHandler);
+
+// Token push (notifications Expo)
+router.post('/push-token', postPushTokenHandler);
+router.delete('/push-token', deletePushTokenHandler);
 
 export default router;
 

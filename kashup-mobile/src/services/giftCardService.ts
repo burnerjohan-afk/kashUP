@@ -45,6 +45,14 @@ export type GiftCardPurchase = {
   status: string;
   createdAt: string;
   expiresAt: string;
+  // Vidéo personnalisée (optionnelle)
+  videoUrl?: string | null;
+  videoDurationSeconds?: number | null;
+  videoStatus?: string | null;
+  videoSentAt?: string | null;
+  videoOpenedAt?: string | null;
+  videoViewedAt?: string | null;
+  videoViewCount?: number;
   giftCard: {
     id: string;
     name: string;
@@ -178,10 +186,16 @@ async function ensureAuthToken(): Promise<void> {
   }
 }
 
-export const sendPredefinedGift = async (payload: SendPredefinedGiftPayload): Promise<{ success: boolean; message: string }> => {
+export const sendPredefinedGift = async (
+  payload: SendPredefinedGiftPayload
+): Promise<{ success: boolean; message: string; purchaseId?: string }> => {
   await ensureAuthToken();
-  const response = await apiClientAuth<{ success: boolean; message: string }>('POST', '/gift-cards/send-predefined', payload);
-  return unwrapStandardResponse(response) as { success: boolean; message: string };
+  const response = await apiClientAuth<{ success: boolean; message: string; purchaseId?: string }>(
+    'POST',
+    '/gift-cards/send-predefined',
+    payload
+  );
+  return unwrapStandardResponse(response) as { success: boolean; message: string; purchaseId?: string };
 };
 
 /** Envoi d'une Box UP à un utilisateur (notification in-app). */
@@ -191,10 +205,16 @@ export type SendBoxUpPayload = {
   message?: string;
 };
 
-export const sendBoxUp = async (payload: SendBoxUpPayload): Promise<{ success: boolean; message: string }> => {
+export const sendBoxUp = async (
+  payload: SendBoxUpPayload
+): Promise<{ success: boolean; message: string; purchaseId?: string }> => {
   await ensureAuthToken();
-  const response = await apiClientAuth<{ success: boolean; message: string }>('POST', '/gift-cards/send-box', payload);
-  return unwrapStandardResponse(response) as { success: boolean; message: string };
+  const response = await apiClientAuth<{ success: boolean; message: string; purchaseId?: string }>(
+    'POST',
+    '/gift-cards/send-box',
+    payload
+  );
+  return unwrapStandardResponse(response) as { success: boolean; message: string; purchaseId?: string };
 };
 
 /** Carte Sélection UP : montant libre (pas de catalogue). Envoi par email (PDF) ou notification app. */
@@ -206,10 +226,16 @@ export type SendSelectionUpPayload = {
   partnerName?: string;
 };
 
-export const sendSelectionUp = async (payload: SendSelectionUpPayload): Promise<{ success: boolean; message: string }> => {
+export const sendSelectionUp = async (
+  payload: SendSelectionUpPayload
+): Promise<{ success: boolean; message: string; purchaseId?: string }> => {
   await ensureAuthToken();
-  const response = await apiClientAuth<{ success: boolean; message: string }>('POST', '/gift-cards/send-selection', payload);
-  return unwrapStandardResponse(response) as { success: boolean; message: string };
+  const response = await apiClientAuth<{ success: boolean; message: string; purchaseId?: string }>(
+    'POST',
+    '/gift-cards/send-selection',
+    payload
+  );
+  return unwrapStandardResponse(response) as { success: boolean; message: string; purchaseId?: string };
 };
 
 // ——— Paiement par carte (Apple Pay / Google Pay via Stripe) ———
@@ -253,15 +279,51 @@ export async function createGiftCardPaymentIntent(
 
 export async function confirmCardPaymentForGift(
   payload: ConfirmCardPaymentForGiftPayload
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; purchaseId?: string }> {
   await ensureAuthToken();
-  const response = await apiClientAuth<{ success: boolean; message: string }>(
+  const response = await apiClientAuth<{ success: boolean; message: string; purchaseId?: string }>(
     'POST',
     '/gift-cards/confirm-card-payment',
     payload
   );
-  return unwrapStandardResponse(response) as { success: boolean; message: string };
+  return unwrapStandardResponse(response) as { success: boolean; message: string; purchaseId?: string };
 }
+
+export type UploadGiftVideoPayload = {
+  purchaseId: string;
+  videoUri: string;
+  requestedVideoDuration: number;
+  videoDurationOption?: 'default' | 'extended';
+  consentAccepted: boolean;
+};
+
+export const uploadGiftVideo = async (payload: UploadGiftVideoPayload): Promise<void> => {
+  await ensureAuthToken();
+
+  const formData = new FormData();
+  formData.append('requestedVideoDuration', String(payload.requestedVideoDuration));
+  formData.append('videoDurationOption', payload.videoDurationOption ?? 'default');
+  formData.append('videoConsentAccepted', payload.consentAccepted ? 'true' : 'false');
+  formData.append(
+    'video',
+    {
+      uri: payload.videoUri,
+      name: 'gift-video.mp4',
+      type: 'video/mp4',
+    } as any
+  );
+
+  await apiClientAuth(
+    'POST',
+    `/gift-cards/orders/${payload.purchaseId}/video`,
+    formData as any
+  ).then(unwrapStandardResponse);
+};
+
+export const markGiftVideoViewed = async (purchaseId: string): Promise<void> => {
+  await ensureAuthToken();
+  await apiClientAuth('POST', `/gift-cards/orders/${purchaseId}/video/viewed`, {}).then(unwrapStandardResponse);
+};
 
 export const getGiftCardOffers = async (): Promise<GiftCardOffer[]> => {
   const { data } = await apiClient.get<GiftCardOffer[]>('/gift-cards/offers');

@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import {
   createCategoryHandler,
+  createPartnerAliasHandler,
   createPartnerHandler,
   deleteCategoryHandler,
+  deletePartnerAliasHandler,
   deletePartnerDocumentHandler,
   deletePartnerHandler,
   getCategories,
+  getPartnerAliasesHandler,
   getPartnerById,
   getPartnerDocumentsHandler,
   getPartners,
@@ -17,7 +20,7 @@ import {
 } from '../controllers/partner.controller';
 import { authMiddleware, requireRoles } from '../middlewares/auth';
 import { validateBody, validateQuery } from '../middlewares/validator';
-import { categorySchema, createPartnerSchema, partnerFiltersSchema, updatePartnerSchema } from '../schemas/partner.schema';
+import { categorySchema, createPartnerAliasSchema, createPartnerSchema, partnerFiltersSchema, updatePartnerSchema } from '../schemas/partner.schema';
 import { USER_ROLE } from '../types/domain';
 import { uploadDocumentSingle, uploadFields } from '../config/upload';
 import logger from '../utils/logger';
@@ -149,6 +152,9 @@ router.post('/categories', authMiddleware, requireRoles(USER_ROLE.admin), valida
 router.patch('/categories/:id', authMiddleware, requireRoles(USER_ROLE.admin), validateBody(categorySchema), updateCategoryHandler);
 router.delete('/categories/:id', authMiddleware, requireRoles(USER_ROLE.admin), deleteCategoryHandler);
 
+router.get('/:id/aliases', authMiddleware, requireRoles(USER_ROLE.admin, USER_ROLE.partner), getPartnerAliasesHandler);
+router.post('/:id/aliases', authMiddleware, requireRoles(USER_ROLE.admin, USER_ROLE.partner), validateBody(createPartnerAliasSchema), createPartnerAliasHandler);
+router.delete('/:id/aliases/:aliasId', authMiddleware, requireRoles(USER_ROLE.admin, USER_ROLE.partner), deletePartnerAliasHandler);
 router.get('/:id', getPartnerById);
 router.get('/:id/statistics', authMiddleware, requireRoles(USER_ROLE.admin), getPartnerStatisticsHandler);
 router.get('/:id/documents', authMiddleware, requireRoles(USER_ROLE.admin), getPartnerDocumentsHandler);

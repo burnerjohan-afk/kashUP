@@ -198,6 +198,13 @@ export const categorySchema = z.object({
   name: z.string().min(3, 'Le nom de la catégorie doit contenir au moins 3 caractères')
 });
 
+/** Schéma pour créer un alias partenaire (reconnaissance cashback Powens) */
+export const createPartnerAliasSchema = z.object({
+  aliasText: z.string().min(1, 'L’alias ne peut pas être vide').max(500),
+  priority: z.coerce.number().int().min(0).max(100).optional().default(1),
+});
+export type CreatePartnerAliasInput = z.infer<typeof createPartnerAliasSchema>;
+
 export type PartnerFilterInput = z.infer<typeof partnerFiltersSchema>;
 export type CreatePartnerInput = z.infer<typeof createPartnerSchema>;
 export type UpdatePartnerInput = z.infer<typeof updatePartnerSchema>;

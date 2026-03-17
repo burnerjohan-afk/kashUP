@@ -886,3 +886,44 @@ export const deletePartnerDocument = async (partnerId: string, documentId: strin
   await prisma.partnerDocument.delete({ where: { id: documentId } });
   return doc;
 };
+
+// ——— Alias partenaires (reconnaissance cashback Powens) ———
+export const getPartnerAliases = async (partnerId: string) => {
+  await getPartner(partnerId);
+  return prisma.partnerAlias.findMany({
+    where: { partnerId },
+    orderBy: [{ priority: 'desc' }, { aliasText: 'asc' }],
+  });
+};
+
+export const createPartnerAlias = async (
+  partnerId: string,
+  data: { aliasText: string; priority?: number }
+) => {
+  await getPartner(partnerId);
+  const aliasText = data.aliasText.trim();
+  if (!aliasText) {
+    const { AppError } = await import('../utils/errors');
+    throw new AppError('L’alias ne peut pas être vide', 400, { code: 'INVALID_ALIAS' });
+  }
+  return prisma.partnerAlias.create({
+    data: {
+      partnerId,
+      aliasText,
+      priority: data.priority ?? 1,
+    },
+  });
+};
+
+export const deletePartnerAlias = async (partnerId: string, aliasId: string) => {
+  await getPartner(partnerId);
+  const alias = await prisma.partnerAlias.findFirst({
+    where: { id: aliasId, partnerId },
+  });
+  if (!alias) {
+    const { AppError } = await import('../utils/errors');
+    throw new AppError('Alias introuvable', 404, { code: 'PARTNER_ALIAS_NOT_FOUND' });
+  }
+  await prisma.partnerAlias.delete({ where: { id: aliasId } });
+  return alias;
+};

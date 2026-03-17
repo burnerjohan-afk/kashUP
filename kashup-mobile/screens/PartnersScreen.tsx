@@ -263,7 +263,7 @@ export default function PartnersScreen() {
   const { data: walletData } = useWallet();
   const { data: rewardsData } = useRewards();
   const cashback = walletData?.wallet?.soldeCashback ?? null;
-  const points = rewardsData?.summary?.points ?? null;
+  const points = walletData?.wallet?.soldePoints ?? rewardsData?.summary?.points ?? null;
 
   const isFirstFocus = React.useRef(true);
   const [layoutKey, setLayoutKey] = useState(0);

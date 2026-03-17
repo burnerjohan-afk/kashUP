@@ -25,7 +25,7 @@ import { useNotifications } from '../context/NotificationsContext';
 import { HomeStackParamList } from '../navigation/HomeStack';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { BudgetAiMessage, getBudgetAiAdvice } from '../services/openai';
-import { createPowensSession, openPowensFlow } from '../services/powens';
+import { getKashupPowensWebviewUrl, openPowensFlow } from '../services/powens';
 import {
   requestSpeechPermissions,
   startSpeechRecognition,
@@ -196,12 +196,8 @@ export default function ProfileDetailScreen() {
     try {
       setPowensLoading(true);
       setPowensError(null);
-      const session = await createPowensSession(powensUserId);
-      if (session?.connect_url) {
-        await openPowensFlow(session.connect_url);
-      } else {
-        Alert.alert('Powens', 'Lien de connexion indisponible. Réessayez plus tard.');
-      }
+      const webviewUrl = await getKashupPowensWebviewUrl();
+      await openPowensFlow(webviewUrl);
     } catch (error) {
       setPowensError('La connexion Powens est indisponible pour le moment.');
       Alert.alert('Powens', (error as Error).message);

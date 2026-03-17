@@ -26,16 +26,45 @@ import { TAB_HEADER_HEIGHT } from '@/src/components/TabScreenHeader';
 import { useNotifications } from '../context/NotificationsContext';
 import { useRewards } from '@/src/hooks/useRewards';
 import { useWallet } from '@/src/hooks/useWallet';
-import { getGiftBoxById, sendBoxUp, createGiftCardPaymentIntent, confirmCardPaymentForGift, GiftBox } from '@/src/services/giftCardService';
+import {
+  getGiftBoxById,
+  sendBoxUp,
+  createGiftCardPaymentIntent,
+  confirmCardPaymentForGift,
+  GiftBox,
+  uploadGiftVideo,
+} from '@/src/services/giftCardService';
 import { usePaymentSheet } from '../src/stubs/stripePaymentSheet';
 import { getPartners } from '@/src/services/partnerService';
 import { normalizeImageUrl } from '@/src/utils/normalizeUrl';
 import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, colors, radius, spacing } from '../constants/theme';
 import type { MainStackParamList } from '../navigation/MainStack';
+import { useGiftVideo } from '@/src/hooks/useGiftVideo';
+import { GiftVideoPreview } from '@/src/components/GiftVideoPreview';
 
 const formatCashback = (v: number) =>
   v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatPoints = (v: number) => `${v.toLocaleString('fr-FR')} pts`;
+const computeCashbackEarned = (amount: number, cashbackRate?: number | string | null) => {
+  const rate = cashbackRate != null && cashbackRate !== '' ? Number(cashbackRate) : 0;
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  const earned = (amount * rate) / 100;
+  return Math.round(earned * 100) / 100;
+};
+
+const confirmWalletDebit = (params: { amount: number; cashbackRate?: number | string | null; title: string }) =>
+  new Promise<boolean>((resolve) => {
+    const cashbackEarned = computeCashbackEarned(params.amount, params.cashbackRate);
+    const net = Math.round((params.amount - cashbackEarned) * 100) / 100;
+    Alert.alert(
+      params.title,
+      `Vous allez payer ${formatCashback(params.amount)} € depuis votre cagnotte cashback.\n\nCashback gagné : ${formatCashback(cashbackEarned)} €\nImpact net sur votre solde : -${formatCashback(net)} €\n\nConfirmer ?`,
+      [
+        { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Confirmer', style: 'destructive', onPress: () => resolve(true) },
+      ]
+    );
+  });
 
 type BoxDetailRoute = RouteProp<MainStackParamList, 'BoxUpDetail'>;
 /** URL d'image pour une box : uniquement l'image enregistrée au back office. Pas d'image par défaut. */
@@ -63,7 +92,7 @@ export default function BoxUpDetailScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const { notifications } = useNotifications();
   const unreadCount = notifications.filter((n) => !n.read).length;
-  const { data: walletData } = useWallet();
+  const { data: walletData, refetch: refetchWallet } = useWallet();
   const { data: rewardsData } = useRewards();
   const cashback = walletData?.wallet?.soldeCashback ?? null;
   const points = rewardsData?.summary?.points ?? null;
@@ -87,6 +116,10 @@ export default function BoxUpDetailScreen() {
   const [pdfExporting, setPdfExporting] = useState(false);
   const [boxSending, setBoxSending] = useState(false);
   const { initPaymentSheet, presentPaymentSheet } = usePaymentSheet();
+  const giftVideo = useGiftVideo({
+    onVideoRecorded: () =>
+      Alert.alert('Vidéo enregistrée', 'Votre vidéo a bien été enregistrée. Vous pouvez la visionner ci-dessous.'),
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -189,10 +222,45 @@ export default function BoxUpDetailScreen() {
           return;
         }
         const result = await confirmCardPaymentForGift({ paymentIntentId, giftType: 'box_up', ...payload });
+        if (giftVideo.hasVideo && giftVideo.videoUri && giftVideo.videoDurationSeconds && giftVideo.consentAccepted && result.purchaseId) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: giftVideo.videoUri,
+              requestedVideoDuration: giftVideo.videoDurationSeconds,
+              videoDurationOption: giftVideo.videoDurationOption,
+              consentAccepted: giftVideo.consentAccepted,
+            });
+          } catch {
+            // l'envoi de la Box ne doit pas échouer à cause de la vidéo
+          }
+        }
         Alert.alert('Box envoyée', result?.message ?? "Le destinataire a été notifié dans l'app.");
+        refetchWallet();
       } else {
+        const amount = Number(box.value ?? box.priceFrom ?? 0);
+        const okDebit = await confirmWalletDebit({
+          title: 'Confirmer le débit',
+          amount,
+          cashbackRate: (box as any).cashbackRate,
+        });
+        if (!okDebit) return;
         const result = await sendBoxUp(payload);
+        if (giftVideo.hasVideo && giftVideo.videoUri && giftVideo.videoDurationSeconds && giftVideo.consentAccepted && result.purchaseId) {
+          try {
+            await uploadGiftVideo({
+              purchaseId: result.purchaseId,
+              videoUri: giftVideo.videoUri,
+              requestedVideoDuration: giftVideo.videoDurationSeconds,
+              videoDurationOption: giftVideo.videoDurationOption,
+              consentAccepted: giftVideo.consentAccepted,
+            });
+          } catch {
+            // idem : ne pas bloquer le cadeau
+          }
+        }
         Alert.alert('Box envoyée', result.message ?? "Le destinataire a été notifié dans l'app.");
+        refetchWallet();
       }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as Error)?.message ?? 'Envoi impossible.';
@@ -453,6 +521,84 @@ export default function BoxUpDetailScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Offrir cette Box</Text>
+          <Text style={styles.sectionLabel}>Vidéo personnalisée (optionnel)</Text>
+          <View style={styles.sendModeRow}>
+            <TouchableOpacity
+              style={[styles.sendModeCard, giftVideo.hasVideo && styles.sendModeCardActive]}
+              onPress={giftVideo.recordVideo}
+              activeOpacity={0.8}>
+              <View style={[styles.sendModeIconWrap, giftVideo.hasVideo && styles.sendModeIconWrapActive]}>
+                <Ionicons
+                  name="videocam-outline"
+                  size={24}
+                  color={giftVideo.hasVideo ? colors.white : colors.primaryPurple}
+                />
+              </View>
+              <Text style={[styles.sendModeTitle, giftVideo.hasVideo && styles.sendModeTitleActive]}>
+                {giftVideo.hasVideo ? 'Vidéo enregistrée' : 'Filmer une vidéo'}
+              </Text>
+              {giftVideo.videoDurationSeconds != null && (
+                <Text style={styles.sendModeSubtitle}>{giftVideo.videoDurationSeconds}s</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sendModeCard, giftVideo.hasVideo && styles.sendModeCardActive]}
+              onPress={giftVideo.pickVideo}
+              activeOpacity={0.8}>
+              <View style={[styles.sendModeIconWrap, giftVideo.hasVideo && styles.sendModeIconWrapActive]}>
+                <Ionicons
+                  name="images-outline"
+                  size={24}
+                  color={giftVideo.hasVideo ? colors.white : colors.primaryPurple}
+                />
+              </View>
+              <Text style={[styles.sendModeTitle, giftVideo.hasVideo && styles.sendModeTitleActive]}>
+                Depuis la galerie
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {giftVideo.hasVideo && giftVideo.videoUri && (
+            <>
+              <GiftVideoPreview
+                videoUri={giftVideo.videoUri}
+                videoDurationSeconds={giftVideo.videoDurationSeconds}
+                onRemove={giftVideo.clearVideo}
+                sendWithLabel="Cette vidéo sera envoyée avec votre box."
+              />
+              <Text style={styles.sectionLabel}>Durée maximale</Text>
+              <View style={styles.sendModeRow}>
+                <TouchableOpacity
+                  style={[styles.sendModeCard, giftVideo.videoDurationOption === 'default' && styles.sendModeCardActive]}
+                  onPress={() => giftVideo.setVideoDurationOption('default')}
+                  activeOpacity={0.8}>
+                  <Text style={[styles.sendModeTitle, giftVideo.videoDurationOption === 'default' && styles.sendModeTitleActive]}>
+                    Durée standard
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sendModeCard, giftVideo.videoDurationOption === 'extended' && styles.sendModeCardActive]}
+                  onPress={() => giftVideo.setVideoDurationOption('extended')}
+                  activeOpacity={0.8}>
+                  <Text style={[styles.sendModeTitle, giftVideo.videoDurationOption === 'extended' && styles.sendModeTitleActive]}>
+                    Durée étendue
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={{ marginTop: spacing.xs }}
+                onPress={() => giftVideo.setConsentAccepted(!giftVideo.consentAccepted)}
+                activeOpacity={0.8}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons
+                    name={giftVideo.consentAccepted ? 'checkbox-outline' : 'square-outline'}
+                    size={20}
+                    color={giftVideo.consentAccepted ? colors.primaryPurple : colors.textSecondary}
+                  />
+                  <Text style={styles.sectionLabel}>J’accepte que cette vidéo soit stockée pour ce cadeau.</Text>
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
           <Text style={styles.sectionLabel}>Mode d'envoi</Text>
           <View style={styles.sendModeRow}>
             <TouchableOpacity

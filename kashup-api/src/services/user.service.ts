@@ -592,3 +592,26 @@ export const deleteMyAccount = async (userId: string) => {
   return { message: 'Compte anonymisé avec succès' };
 };
 
+/**
+ * Enregistre ou met à jour le token Expo Push pour l'utilisateur (notifications push mobile).
+ */
+export const updatePushToken = async (userId: string, token: string): Promise<void> => {
+  if (!token || typeof token !== 'string' || token.trim().length === 0) {
+    throw new AppError('Token push invalide', 400);
+  }
+  await prisma.user.update({
+    where: { id: userId },
+    data: { pushToken: token.trim() },
+  });
+};
+
+/**
+ * Supprime le token Expo Push de l'utilisateur (déconnexion ou désactivation des notifications).
+ */
+export const clearPushToken = async (userId: string): Promise<void> => {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { pushToken: null },
+  });
+};
+

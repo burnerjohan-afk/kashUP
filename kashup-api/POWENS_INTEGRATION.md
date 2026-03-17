@@ -40,20 +40,33 @@ Intégration complète de POWENS (ex-Budget Insight) dans Kashup avec flow Tempo
 
 ## 🔧 Configuration
 
-### Variables d'environnement requises
+Documentation officielle : **[docs.powens.com](https://docs.powens.com/documentation/)** (Quick Start, API Overview, Add a first user and connection).
+
+### Où trouver les variables
+
+| Variable | Où la trouver | Obligatoire pour |
+|----------|----------------|------------------|
+| `POWENS_DOMAIN`, `POWENS_API_URL` | Domaine créé dans la console (ex. `kashup` → `kashup-sandbox.biapi.pro`) | Webview + sync |
+| `POWENS_CLIENT_ID`, `POWENS_CLIENT_SECRET`, `POWENS_REDIRECT_URI` | **Configuration** de la client application (écran avec Client ID, URIs de redirection) | Webview (connexion banque) |
+| `POWENS_CONFIG_KEY`, `POWENS_USERS_KEY`, etc. | Console → domaine → **API Keys / Manage tokens** (tokens générés à la création du domaine) | Endpoints list connections, budget, payments, etc. |
+
+Pour le flow **webview uniquement** (connexion banque + callback + sync comptes/transactions), les 5 variables suffisent : `POWENS_DOMAIN`, `POWENS_API_URL`, `POWENS_CLIENT_ID`, `POWENS_CLIENT_SECRET`, `POWENS_REDIRECT_URI`. Les clés "manage tokens" sont optionnelles sauf si vous utilisez les routes qui s’appuient sur `powens.service.ts` (list connections, budget, etc.).
+
+### Variables d'environnement
 
 ```env
-# Powens API Configuration
+# Requis pour webview (Configuration)
 POWENS_DOMAIN="kashup-sandbox"
 POWENS_API_URL="https://kashup-sandbox.biapi.pro/2.0/"
 POWENS_CLIENT_ID="votre_client_id"
 POWENS_CLIENT_SECRET="votre_client_secret"
-POWENS_REDIRECT_URI="http://localhost:5173/powens/callback"
+POWENS_REDIRECT_URI="https://kashupv0.vercel.app/powens/callback"
+# Optionnel : manage tokens (console → domaine / API Keys)
 POWENS_CONFIG_KEY="votre_clef_config"
 POWENS_MONITORING_KEY="votre_clef_surveillance"
 POWENS_USERS_KEY="votre_clef_utilisateurs"
 POWENS_ENCRYPTION_PUBLIC_KEY="votre_clef_RSA_base64"
-POWENS_WEBHOOK_SECRET="votre_webhook_secret"  # Optionnel
+POWENS_WEBHOOK_SECRET="votre_webhook_secret"
 ```
 
 ### Migration Prisma
@@ -268,7 +281,8 @@ curl -H "Authorization: Bearer <token>" \
 
 ## 🔗 Références
 
-- [Documentation Powens](https://docs.biapi.pro/)
-- Flow Temporary code: `/2.0/auth/init` → `/2.0/auth/token/access`
-- Webview: `/2.0/auth/webview/connect`
+- [Documentation Powens](https://docs.powens.com/documentation/) — Quick Start, API Overview, Add a first user and connection
+- [Console Budget Insight](https://console.budget-insight.com/) — Création domaine, client application, API Keys
+- Flow Temporary code: `POST /2.0/auth/init` → `GET /2.0/auth/token/code` → Webview → callback
+- Webview: `/2.0/auth/webview/connect` (ou `https://webview.powens.com/connect?domain=...`)
 

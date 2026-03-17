@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 
 import { colors, radius, spacing } from '../constants/theme';
-import { createPowensSession, openPowensFlow } from '../services/powens';
+import { getKashupPowensWebviewUrl, openPowensFlow } from '../services/powens';
 import { MainStackParamList } from '../navigation/MainStack';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -18,13 +18,9 @@ export default function PowensLinkScreen() {
     try {
       setLoading(true);
       setError(null);
-      const session = await createPowensSession('demo-user');
-      if (session?.connect_url) {
-        await openPowensFlow(session.connect_url);
-        navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
-      } else {
-        setError('Lien Powens non disponible pour le moment.');
-      }
+      const webviewUrl = await getKashupPowensWebviewUrl();
+      await openPowensFlow(webviewUrl);
+      navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
     } catch (err) {
       setError((err as Error).message);
     } finally {

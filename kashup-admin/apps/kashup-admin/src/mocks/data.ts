@@ -722,6 +722,7 @@ const defaultDb = {
   associations,
   projets,
   partnerDocuments: [] as PartnerDocument[],
+  partnerAliases: [] as Array<{ id: string; partnerId: string; aliasText: string; priority: number; createdAt: string; updatedAt: string }>,
 };
 
 // Charger les données depuis localStorage si disponible

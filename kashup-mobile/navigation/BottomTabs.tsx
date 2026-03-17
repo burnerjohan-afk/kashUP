@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import HomeStack from './HomeStack';
@@ -9,7 +10,7 @@ import PartnersStack from './PartnersStack';
 import CagnotteStack from './CagnotteStack';
 import GiftCardsScreen from '../screens/GiftCardsScreen';
 import RewardsStack from './RewardsStack';
-import { radius, spacing } from '../constants/theme';
+import { CARD_GRADIENT_COLORS, CARD_GRADIENT_LOCATIONS, spacing } from '../constants/theme';
 
 const TAB_BAR_ICON = '#3C3C3C';
 const TAB_BAR_ACTIVE = '#047857';
@@ -44,83 +45,138 @@ const iconMap: Record<keyof BottomTabParamList, string> = {
   Rewards: 'star-outline',
 };
 
-/** Menu bas style WhatsApp : pilule ovale centrée, pas toute la largeur, fond blanc légèrement transparent */
-function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+type CustomTabBarProps = BottomTabBarProps & {
+  tabBarOpen: boolean;
+  setTabBarOpen: (open: boolean) => void;
+};
+
+
+/** Menu bas masqué par défaut ; bouton + pour ouvrir la barre (pilule style WhatsApp) */
+function CustomTabBar({ state, descriptors, navigation, tabBarOpen, setTabBarOpen }: CustomTabBarProps) {
   const insets = useSafeAreaInsets();
   const paddingBottom = Math.max(insets.bottom, spacing.sm);
+  const animValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(animValue, {
+      toValue: tabBarOpen ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [tabBarOpen, animValue]);
+
+  const pillOpacity = animValue;
+  const fabOpacity = animValue.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  const fabScale = animValue.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] });
+
+  const onTabPress = (route: (typeof state.routes)[0]) => {
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: route.key,
+      canPreventDefault: true,
+    });
+    if (event.defaultPrevented) return;
+    switch (route.name) {
+      case 'Accueil':
+        navigation.navigate('Accueil', { screen: 'HomeLanding' });
+        break;
+      case 'Partenaires':
+        navigation.navigate('Partenaires', { screen: 'PartnersList' });
+        break;
+      case 'Cagnotte':
+        navigation.navigate('Cagnotte', { screen: 'Wallet' });
+        break;
+      case "Bons d'achat":
+        navigation.navigate("Bons d'achat");
+        break;
+      case 'Rewards':
+        navigation.navigate('Rewards', { screen: 'RewardsHome', params: route.params });
+        break;
+      default:
+        navigation.navigate(route.name, route.params);
+    }
+    setTabBarOpen(false);
+  };
 
   return (
     <View style={[styles.container, { paddingBottom }]} pointerEvents="box-none">
-      <View style={styles.pill}>
-        <View style={styles.pillInner}>
-          {state.routes.map((route) => {
-            const { options } = descriptors[route.key];
-            const isFocused = state.index === state.routes.indexOf(route);
-            const routeName = route.name as keyof BottomTabParamList;
-            const iconName = iconMap[routeName] as string;
-
-            const onPress = () => {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (event.defaultPrevented) return;
-              // Toujours aller à l'écran d'entrée du menu (réinitialise la pile si on reclique sur l'onglet actif)
-              switch (route.name) {
-                case 'Accueil':
-                  navigation.navigate('Accueil', { screen: 'HomeLanding' });
-                  break;
-                case 'Partenaires':
-                  navigation.navigate('Partenaires', { screen: 'PartnersList' });
-                  break;
-                case 'Cagnotte':
-                  navigation.navigate('Cagnotte', { screen: 'Wallet' });
-                  break;
-                case "Bons d'achat":
-                  navigation.navigate("Bons d'achat");
-                  break;
-                case 'Rewards':
-                  navigation.navigate('Rewards', { screen: 'RewardsHome', params: route.params });
-                  break;
-                default:
-                  navigation.navigate(route.name, route.params);
-              }
-            };
-
-            return (
-              <Pressable
-                key={route.key}
-                style={styles.tab}
-                onPress={onPress}
-                android_ripple={{ color: 'rgba(0,0,0,0.08)' }}>
-                <View style={[styles.tabContent, isFocused && styles.tabContentActive]}>
-                  <Ionicons
-                    name={iconName as any}
-                    size={24}
-                    color={isFocused ? TAB_BAR_ACTIVE : TAB_BAR_ICON}
-                  />
-                  <Text
-                    style={[styles.tabLabel, isFocused && styles.tabLabelActive]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    textAlign="center">
-                    {options.title ?? route.name}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
+      {/* Overlay pour fermer en tapant à côté de la pilule */}
+      {tabBarOpen && (
+        <Pressable
+          style={styles.overlay}
+          onPress={() => setTabBarOpen(false)}
+          pointerEvents="auto"
+        />
+      )}
+      {/* Pilule des onglets (visible quand ouvert) — blanche avec transparence, comme à l'origine */}
+      <Animated.View style={[styles.pillWrap, { opacity: pillOpacity, pointerEvents: tabBarOpen ? 'auto' : 'none' }]}>
+        <View style={[styles.pill, { backgroundColor: 'rgba(255,255,255,0.92)' }]}>
+          <View style={styles.pillInner}>
+            {state.routes.map((route) => {
+              const { options } = descriptors[route.key];
+              const isFocused = state.index === state.routes.indexOf(route);
+              const routeName = route.name as keyof BottomTabParamList;
+              const iconName = iconMap[routeName] as string;
+              return (
+                <Pressable
+                  key={route.key}
+                  style={styles.tab}
+                  onPress={() => onTabPress(route)}
+                  android_ripple={{ color: 'rgba(0,0,0,0.08)' }}>
+                  <View style={[styles.tabContent, isFocused && styles.tabContentActive]}>
+                    <Ionicons
+                      name={iconName as any}
+                      size={24}
+                      color={isFocused ? TAB_BAR_ACTIVE : TAB_BAR_ICON}
+                    />
+                    <Text
+                      style={[styles.tabLabel, isFocused && styles.tabLabelActive]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      textAlign="center">
+                      {options.title ?? route.name}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-      </View>
+      </Animated.View>
+      {/* Bouton + (visible quand barre fermée) — dégradé vert comme la carte */}
+      <Animated.View
+        style={[
+          styles.fabWrap,
+          {
+            bottom: paddingBottom + spacing.sm,
+            opacity: fabOpacity,
+            transform: [{ scale: fabScale }],
+          },
+        ]}
+        pointerEvents={tabBarOpen ? 'none' : 'auto'}>
+        <Pressable
+          style={styles.fab}
+          onPress={() => setTabBarOpen(true)}
+          android_ripple={{ color: 'rgba(255,255,255,0.4)' }}>
+          <LinearGradient
+            colors={[...CARD_GRADIENT_COLORS]}
+            locations={[...CARD_GRADIENT_LOCATIONS]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.fabGradient}>
+            <Ionicons name="add" size={28} color="#FFF" />
+          </LinearGradient>
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
 
 export default function BottomTabs() {
+  const [tabBarOpen, setTabBarOpen] = useState(false);
   return (
     <Tab.Navigator
-      tabBar={(props) => <CustomTabBar {...props} />}
+      tabBar={(props) => <CustomTabBar {...props} tabBarOpen={tabBarOpen} setTabBarOpen={setTabBarOpen} />}
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
@@ -144,6 +200,7 @@ export default function BottomTabs() {
 
 const PILL_BG = 'rgba(255,255,255,0.92)';
 const TAB_PILL_ACTIVE = 'transparent';
+const FAB_SIZE = 56;
 
 const styles = StyleSheet.create({
   container: {
@@ -154,6 +211,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  pillWrap: {
+    width: '100%',
+    alignItems: 'center',
   },
   pill: {
     width: '100%',
@@ -205,5 +269,29 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     color: TAB_BAR_ACTIVE,
+  },
+  fabWrap: {
+    position: 'absolute',
+    right: spacing.lg,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+  },
+  fab: {
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  fabGradient: {
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

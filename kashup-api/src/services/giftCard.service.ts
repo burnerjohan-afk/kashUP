@@ -1,4 +1,4 @@
-import { addMonths } from 'date-fns';
+import { addDays, addMonths } from 'date-fns';
 import { randomAlphanumeric } from '../utils/randomId';
 import prisma from '../config/prisma';
 import {
@@ -13,7 +13,166 @@ import {
 import { AppError } from '../utils/errors';
 import { emitBoxUpConfigWebhook, emitGiftCardConfigWebhook } from './webhook.service';
 import { createNotification } from './notification.service';
+import { sendPushToUser } from './pushNotification.service';
 import { buildListMeta, buildListQuery, ListParams } from '../utils/listing';
+
+type TxClient = typeof prisma;
+
+function computeCashbackEarned(amount: number, cashbackRate: number | null | undefined): number {
+  const rate = cashbackRate != null ? Number(cashbackRate) : 0;
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  const earned = (amount * rate) / 100;
+  return Math.round(earned * 100) / 100;
+}
+
+async function resolvePartnerId(tx: TxClient, preferredPartnerId?: string | null): Promise<string> {
+  if (preferredPartnerId && preferredPartnerId.trim() !== '') return preferredPartnerId;
+  const partner = await tx.partner.findFirst({ select: { id: true } });
+  if (!partner) throw new AppError('Aucun partenaire disponible pour enregistrer la transaction', 500);
+  return partner.id;
+}
+
+async function ensureWallet(tx: TxClient, userId: string) {
+  return tx.wallet.upsert({
+    where: { userId },
+    create: { userId, soldeCashback: 0, soldePoints: 0, soldeCoffreFort: 0 },
+    update: {},
+  });
+}
+
+async function applyCashbackReward(
+  tx: TxClient,
+  params: {
+    userId: string;
+    partnerId?: string | null;
+    amount: number;
+    cashbackRate?: number | null;
+    source: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  const cashbackEarned = computeCashbackEarned(params.amount, params.cashbackRate);
+  if (cashbackEarned <= 0) return { cashbackEarned: 0 };
+
+  const partnerId = await resolvePartnerId(tx, params.partnerId);
+  const wallet = await ensureWallet(tx, params.userId);
+
+  await tx.transaction.create({
+    data: {
+      userId: params.userId,
+      partnerId,
+      amount: params.amount,
+      cashbackEarned,
+      pointsEarned: 0,
+      source: params.source,
+      status: 'confirmed',
+      metadata: params.metadata ? JSON.stringify(params.metadata) : undefined,
+    },
+  });
+
+  await tx.wallet.update({
+    where: { id: wallet.id },
+    data: { soldeCashback: { increment: cashbackEarned } },
+  });
+
+  return { cashbackEarned };
+}
+
+async function ensureGiftCardForPredefinedOffer(
+  tx: TxClient,
+  params: {
+    offerId: string;
+    offerType: 'predefined' | 'carte_up';
+    title: string;
+    amount: number;
+    partnerId?: string | null;
+    description?: string | null;
+  }
+) {
+  const existing = await tx.giftCard.findFirst({
+    where: {
+      type: params.offerType,
+      name: params.title,
+      value: params.amount,
+      partnerId: params.partnerId ?? undefined,
+    },
+  });
+  if (existing) return existing;
+
+  return tx.giftCard.create({
+    data: {
+      type: params.offerType,
+      name: params.title,
+      description: params.description ?? '',
+      value: params.amount,
+      partnerId: params.partnerId ?? undefined,
+      isGiftable: true,
+    },
+  });
+}
+
+async function ensureGiftCardForBoxUp(
+  tx: TxClient,
+  params: {
+    boxId: string;
+    name: string;
+    amount: number;
+    description?: string | null;
+  }
+) {
+  const existing = await tx.giftCard.findFirst({
+    where: {
+      type: 'box_up',
+      name: params.name,
+      value: params.amount,
+    },
+  });
+  if (existing) return existing;
+
+  return tx.giftCard.create({
+    data: {
+      type: 'box_up',
+      name: params.name,
+      description: params.description ?? '',
+      value: params.amount,
+      isGiftable: true,
+    },
+  });
+}
+
+async function ensureGiftCardForSelectionUp(
+  tx: TxClient,
+  params: {
+    amount: number;
+    partnerId?: string | null;
+    partnerName?: string | null;
+  }
+) {
+  const title = params.partnerName?.trim()
+    ? `Carte Sélection UP — ${params.partnerName.trim()}`
+    : 'Carte Sélection UP';
+
+  const existing = await tx.giftCard.findFirst({
+    where: {
+      type: 'selection_up',
+      name: title,
+      value: params.amount,
+      partnerId: params.partnerId ?? undefined,
+    },
+  });
+  if (existing) return existing;
+
+  return tx.giftCard.create({
+    data: {
+      type: 'selection_up',
+      name: title,
+      description: null,
+      value: params.amount,
+      partnerId: params.partnerId ?? undefined,
+      isGiftable: true,
+    },
+  });
+}
 
 export const listGiftCardAmounts = async () => {
   const amounts = await prisma.giftCardAmount.findMany({
@@ -240,6 +399,12 @@ export const purchaseGiftCard = async (userId: string, input: PurchaseGiftCardIn
       category: 'gifts',
       metadata: { purchaseId: purchase.id, giftCardId: giftCard.id },
     });
+    sendPushToUser(beneficiaryUser.id, {
+      title: 'Vous avez reçu un cadeau',
+      body: input.message
+        ? `${giftName} — ${input.message.substring(0, 80)}${input.message.length > 80 ? '…' : ''}`
+        : `Carte cadeau ${giftName} (${amount} €)`,
+    }).catch(() => {});
   }
 
   return purchase;
@@ -257,6 +422,10 @@ export const sendPredefinedGift = async (senderId: string, input: SendPredefined
   }
   const amount = predefined ? predefined.amount : (offer as { montant: number }).montant;
   const title = predefined ? predefined.title : (offer as { nom: string }).nom;
+  const cashbackRate =
+    !predefined && (offer as { cashbackRate?: number | null }).cashbackRate != null
+      ? Number((offer as { cashbackRate?: number | null }).cashbackRate)
+      : null;
 
   const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
   if (!beneficiary) {
@@ -276,11 +445,53 @@ export const sendPredefinedGift = async (senderId: string, input: SendPredefined
 
   const offerType = predefined ? 'predefined' : 'carte_up';
 
-  await prisma.$transaction(async (tx) => {
+  const purchase = await prisma.$transaction(async (tx) => {
     await tx.wallet.update({
       where: { id: wallet.id },
       data: { soldeCashback: { decrement: amount } },
     });
+
+    const partnerId =
+      !predefined && (offer as { partenaireId?: string | null })?.partenaireId
+        ? (offer as { partenaireId: string }).partenaireId
+        : undefined;
+
+    // Crédit cashback (si taux défini sur Carte UP pré-définie). Pas de cashback sur PredefinedGift.
+    await applyCashbackReward(tx, {
+      userId: senderId,
+      partnerId: partnerId ?? null,
+      amount,
+      cashbackRate,
+      source: 'gift_send',
+      metadata: {
+        type: 'gift_send',
+        giftType: offerType,
+        offerId: input.offerId,
+        beneficiaryEmail: beneficiary.email,
+      },
+    });
+
+    const giftCard = await ensureGiftCardForPredefinedOffer(tx, {
+      offerId: input.offerId,
+      offerType,
+      title,
+      amount,
+      partnerId,
+      description: predefined ? predefined.subtitle ?? null : (offer as { description?: string | null }).description,
+    });
+
+    const purchaseRecord = await tx.giftCardPurchase.create({
+      data: {
+        giftCardId: giftCard.id,
+        purchaserId: senderId,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
+        expiresAt: addMonths(new Date(), 6),
+      },
+    });
+
     await tx.predefinedGiftSend.create({
       data: {
         offerId: input.offerId,
@@ -293,16 +504,27 @@ export const sendPredefinedGift = async (senderId: string, input: SendPredefined
         offerTitle: title,
       },
     });
+
+    return purchaseRecord;
   });
 
   await createNotification(beneficiary.id, {
     title: 'Vous avez reçu un cadeau',
     body: input.message?.trim() ? `${title} — ${input.message.trim()}` : title,
     category: 'gifts',
-    metadata: { offerId: input.offerId, offerType, senderId },
+    metadata: { offerId: input.offerId, offerType, senderId, purchaseId: purchase.id },
   });
 
-  return { success: true, message: 'Cadeau envoyé. Le destinataire a été notifié dans l\'app.' };
+  sendPushToUser(beneficiary.id, {
+    title: 'Vous avez reçu un cadeau',
+    body: input.message?.trim() ? `${title} — ${input.message.trim()}` : title,
+  }).catch(() => {});
+
+  return {
+    success: true,
+    message: 'Cadeau envoyé. Le destinataire a été notifié dans l\'app.',
+    purchaseId: purchase.id,
+  };
 };
 
 /** Envoi d'une Box UP à un utilisateur : débit wallet, enregistrement PredefinedGiftSend (offerType box_up), notification in-app. */
@@ -317,6 +539,7 @@ export const sendBoxUp = async (senderId: string, input: SendBoxUpInput) => {
   if (amount <= 0) {
     throw new AppError('Cette Box n\'a pas de montant défini', 400);
   }
+  const cashbackRate = box.cashbackRate != null ? Number(box.cashbackRate) : null;
 
   const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
   if (!beneficiary) {
@@ -334,11 +557,49 @@ export const sendBoxUp = async (senderId: string, input: SendBoxUpInput) => {
     throw new AppError('Solde cashback insuffisant', 400);
   }
 
-  await prisma.$transaction(async (tx) => {
+  const purchase = await prisma.$transaction(async (tx) => {
     await tx.wallet.update({
       where: { id: wallet.id },
       data: { soldeCashback: { decrement: amount } },
     });
+
+    const preferredPartnerId = await tx.giftBoxItem
+      .findFirst({ where: { giftBoxId: box.id, partnerId: { not: null } }, select: { partnerId: true } })
+      .then((i) => i?.partnerId ?? null);
+
+    await applyCashbackReward(tx, {
+      userId: senderId,
+      partnerId: preferredPartnerId,
+      amount,
+      cashbackRate,
+      source: 'gift_send',
+      metadata: {
+        type: 'gift_send',
+        giftType: 'box_up',
+        boxId: input.boxId,
+        beneficiaryEmail: beneficiary.email,
+      },
+    });
+
+    const giftCard = await ensureGiftCardForBoxUp(tx, {
+      boxId: input.boxId,
+      name: box.name,
+      amount,
+      description: box.description,
+    });
+
+    const purchaseRecord = await tx.giftCardPurchase.create({
+      data: {
+        giftCardId: giftCard.id,
+        purchaserId: senderId,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
+        expiresAt: addMonths(new Date(), 6),
+      },
+    });
+
     await tx.predefinedGiftSend.create({
       data: {
         offerId: input.boxId,
@@ -351,16 +612,27 @@ export const sendBoxUp = async (senderId: string, input: SendBoxUpInput) => {
         offerTitle: box.name,
       },
     });
+
+    return purchaseRecord;
   });
 
   await createNotification(beneficiary.id, {
     title: 'Vous avez reçu une Box UP',
     body: input.message?.trim() ? `${box.name} — ${input.message.trim()}` : box.name,
     category: 'gifts',
-    metadata: { boxId: input.boxId, senderId },
+    metadata: { boxId: input.boxId, senderId, purchaseId: purchase.id },
   });
 
-  return { success: true, message: 'Box UP envoyée. Le destinataire a été notifié dans l\'app.' };
+  sendPushToUser(beneficiary.id, {
+    title: 'Vous avez reçu une Box UP',
+    body: input.message?.trim() ? `${box.name} — ${input.message.trim()}` : box.name,
+  }).catch(() => {});
+
+  return {
+    success: true,
+    message: 'Box UP envoyée. Le destinataire a été notifié dans l\'app.',
+    purchaseId: purchase.id,
+  };
 };
 
 /** Carte Sélection UP : montant libre (pas de catalogue). Débite le wallet, crée l'envoi. Si le destinataire a un compte KashUP, notification in-app. */
@@ -382,11 +654,47 @@ export const sendSelectionUp = async (senderId: string, input: SendSelectionUpIn
 
   const offerTitle = input.partnerName?.trim() ? `Carte Sélection UP — ${input.partnerName}` : 'Carte Sélection UP';
 
-  await prisma.$transaction(async (tx) => {
+  const purchase = await prisma.$transaction(async (tx) => {
     await tx.wallet.update({
       where: { id: wallet.id },
       data: { soldeCashback: { decrement: amount } },
     });
+
+    const activeConfig = await tx.carteUpLibreConfig.findFirst({ where: { status: 'active' } });
+    const cashbackRate = activeConfig?.cashbackRate != null ? Number(activeConfig.cashbackRate) : null;
+
+    await applyCashbackReward(tx, {
+      userId: senderId,
+      partnerId: input.partnerId ?? null,
+      amount,
+      cashbackRate,
+      source: 'gift_send',
+      metadata: {
+        type: 'gift_send',
+        giftType: 'selection_up',
+        partnerId: input.partnerId ?? null,
+        beneficiaryEmail: email,
+      },
+    });
+
+    const giftCard = await ensureGiftCardForSelectionUp(tx, {
+      amount,
+      partnerId: input.partnerId ?? null,
+      partnerName: input.partnerName ?? null,
+    });
+
+    const purchaseRecord = await tx.giftCardPurchase.create({
+      data: {
+        giftCardId: giftCard.id,
+        purchaserId: senderId,
+        beneficiaryEmail: email,
+        message: input.message ?? null,
+        amount,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
+        expiresAt: addMonths(new Date(), 6),
+      },
+    });
+
     await tx.predefinedGiftSend.create({
       data: {
         offerId: input.partnerId ?? '',
@@ -399,6 +707,8 @@ export const sendSelectionUp = async (senderId: string, input: SendSelectionUpIn
         offerTitle,
       },
     });
+
+    return purchaseRecord;
   });
 
   if (beneficiary) {
@@ -406,8 +716,12 @@ export const sendSelectionUp = async (senderId: string, input: SendSelectionUpIn
       title: 'Vous avez reçu une Carte Sélection UP',
       body: input.message?.trim() ? `${offerTitle} — ${input.message.trim()}` : `${offerTitle} (${amount} €)`,
       category: 'gifts',
-      metadata: { amount, senderId, partnerId: input.partnerId },
+      metadata: { amount, senderId, partnerId: input.partnerId, purchaseId: purchase.id },
     });
+    sendPushToUser(beneficiary.id, {
+      title: 'Vous avez reçu une Carte Sélection UP',
+      body: input.message?.trim() ? `${offerTitle} — ${input.message.trim()}` : `${offerTitle} (${amount} €)`,
+    }).catch(() => {});
   }
 
   return {
@@ -415,6 +729,7 @@ export const sendSelectionUp = async (senderId: string, input: SendSelectionUpIn
     message: beneficiary
       ? 'Carte envoyée. Le destinataire a été notifié dans l\'app.'
       : 'Carte envoyée. Le destinataire recevra les détails par e-mail.',
+    purchaseId: purchase.id,
   };
 };
 
@@ -454,6 +769,10 @@ export const sendPredefinedGiftWithCard = async (senderId: string, input: SendPr
   }
   const amount = predefined ? predefined.amount : (offer as { montant: number }).montant;
   const title = predefined ? predefined.title : (offer as { nom: string }).nom;
+  const cashbackRate =
+    !predefined && (offer as { cashbackRate?: number | null }).cashbackRate != null
+      ? Number((offer as { cashbackRate?: number | null }).cashbackRate)
+      : null;
 
   const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
   if (!beneficiary) {
@@ -465,27 +784,81 @@ export const sendPredefinedGiftWithCard = async (senderId: string, input: SendPr
 
   const offerType = predefined ? 'predefined' : 'carte_up';
 
-  await prisma.predefinedGiftSend.create({
-    data: {
+  const purchase = await prisma.$transaction(async (tx) => {
+    const partnerId =
+      !predefined && (offer as { partenaireId?: string | null })?.partenaireId
+        ? (offer as { partenaireId: string }).partenaireId
+        : undefined;
+
+    await applyCashbackReward(tx, {
+      userId: senderId,
+      partnerId: partnerId ?? null,
+      amount,
+      cashbackRate,
+      source: 'gift_send_card',
+      metadata: {
+        type: 'gift_send',
+        payment: 'card',
+        giftType: offerType,
+        offerId: input.offerId,
+        beneficiaryEmail: beneficiary.email,
+      },
+    });
+
+    const giftCard = await ensureGiftCardForPredefinedOffer(tx, {
       offerId: input.offerId,
       offerType,
-      senderId,
-      beneficiaryUserId: beneficiary.id,
-      beneficiaryEmail: beneficiary.email,
-      message: input.message ?? null,
+      title,
       amount,
-      offerTitle: title,
-    },
+      partnerId,
+      description: predefined ? predefined.subtitle ?? null : (offer as { description?: string | null }).description,
+    });
+
+    const purchaseRecord = await tx.giftCardPurchase.create({
+      data: {
+        giftCardId: giftCard.id,
+        purchaserId: senderId,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
+        expiresAt: addMonths(new Date(), 6),
+      },
+    });
+
+    await tx.predefinedGiftSend.create({
+      data: {
+        offerId: input.offerId,
+        offerType,
+        senderId,
+        beneficiaryUserId: beneficiary.id,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        offerTitle: title,
+      },
+    });
+
+    return purchaseRecord;
   });
 
   await createNotification(beneficiary.id, {
     title: 'Vous avez reçu un cadeau',
     body: input.message?.trim() ? `${title} — ${input.message.trim()}` : title,
     category: 'gifts',
-    metadata: { offerId: input.offerId, offerType, senderId },
+    metadata: { offerId: input.offerId, offerType, senderId, purchaseId: purchase.id },
   });
 
-  return { success: true, message: 'Cadeau envoyé. Le destinataire a été notifié dans l\'app.' };
+  sendPushToUser(beneficiary.id, {
+    title: 'Vous avez reçu un cadeau',
+    body: input.message?.trim() ? `${title} — ${input.message.trim()}` : title,
+  }).catch(() => {});
+
+  return {
+    success: true,
+    message: 'Cadeau envoyé. Le destinataire a été notifié dans l\'app.',
+    purchaseId: purchase.id,
+  };
 };
 
 /** Envoi Box UP payé par carte (pas de débit cashback). */
@@ -500,6 +873,7 @@ export const sendBoxUpWithCard = async (senderId: string, input: SendBoxUpInput)
   if (amount <= 0) {
     throw new AppError('Cette Box n\'a pas de montant défini', 400);
   }
+  const cashbackRate = box.cashbackRate != null ? Number(box.cashbackRate) : null;
 
   const beneficiary = await prisma.user.findUnique({ where: { email: input.beneficiaryEmail.trim().toLowerCase() } });
   if (!beneficiary) {
@@ -509,27 +883,80 @@ export const sendBoxUpWithCard = async (senderId: string, input: SendBoxUpInput)
     throw new AppError('Vous ne pouvez pas vous envoyer un cadeau à vous-même.', 400);
   }
 
-  await prisma.predefinedGiftSend.create({
-    data: {
-      offerId: input.boxId,
-      offerType: 'box_up',
-      senderId,
-      beneficiaryUserId: beneficiary.id,
-      beneficiaryEmail: beneficiary.email,
-      message: input.message ?? null,
+  const purchase = await prisma.$transaction(async (tx) => {
+    const preferredPartnerId = await tx.giftBoxItem
+      .findFirst({ where: { giftBoxId: box.id, partnerId: { not: null } }, select: { partnerId: true } })
+      .then((i) => i?.partnerId ?? null);
+
+    await applyCashbackReward(tx, {
+      userId: senderId,
+      partnerId: preferredPartnerId,
       amount,
-      offerTitle: box.name,
-    },
+      cashbackRate,
+      source: 'gift_send_card',
+      metadata: {
+        type: 'gift_send',
+        payment: 'card',
+        giftType: 'box_up',
+        boxId: input.boxId,
+        beneficiaryEmail: beneficiary.email,
+      },
+    });
+
+    const giftCard = await ensureGiftCardForBoxUp(tx, {
+      boxId: input.boxId,
+      name: box.name,
+      amount,
+      description: box.description,
+    });
+
+    const purchaseRecord = await tx.giftCardPurchase.create({
+      data: {
+        giftCardId: giftCard.id,
+        purchaserId: senderId,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
+        expiresAt: addMonths(new Date(), 6),
+        offerType: 'box_up',
+        offerId: input.boxId,
+      },
+    });
+
+    await tx.predefinedGiftSend.create({
+      data: {
+        offerId: input.boxId,
+        offerType: 'box_up',
+        senderId,
+        beneficiaryUserId: beneficiary.id,
+        beneficiaryEmail: beneficiary.email,
+        message: input.message ?? null,
+        amount,
+        offerTitle: box.name,
+      },
+    });
+
+    return purchaseRecord;
   });
 
   await createNotification(beneficiary.id, {
     title: 'Vous avez reçu une Box UP',
     body: input.message?.trim() ? `${box.name} — ${input.message.trim()}` : box.name,
     category: 'gifts',
-    metadata: { boxId: input.boxId, senderId },
+    metadata: { boxId: input.boxId, senderId, purchaseId: purchase.id },
   });
 
-  return { success: true, message: 'Box UP envoyée. Le destinataire a été notifié dans l\'app.' };
+  sendPushToUser(beneficiary.id, {
+    title: 'Vous avez reçu une Box UP',
+    body: input.message?.trim() ? `${box.name} — ${input.message.trim()}` : box.name,
+  }).catch(() => {});
+
+  return {
+    success: true,
+    message: 'Box UP envoyée. Le destinataire a été notifié dans l\'app.',
+    purchaseId: purchase.id,
+  };
 };
 
 /** Envoi Carte Sélection UP payé par carte (pas de débit cashback). */
@@ -543,17 +970,57 @@ export const sendSelectionUpWithCard = async (senderId: string, input: SendSelec
 
   const offerTitle = input.partnerName?.trim() ? `Carte Sélection UP — ${input.partnerName}` : 'Carte Sélection UP';
 
-  await prisma.predefinedGiftSend.create({
-    data: {
-      offerId: input.partnerId ?? '',
-      offerType: 'selection_up',
-      senderId,
-      beneficiaryUserId: beneficiary?.id ?? null,
-      beneficiaryEmail: email,
-      message: input.message ?? null,
+  const purchase = await prisma.$transaction(async (tx) => {
+    const activeConfig = await tx.carteUpLibreConfig.findFirst({ where: { status: 'active' } });
+    const cashbackRate = activeConfig?.cashbackRate != null ? Number(activeConfig.cashbackRate) : null;
+
+    await applyCashbackReward(tx, {
+      userId: senderId,
+      partnerId: input.partnerId ?? null,
       amount,
-      offerTitle,
-    },
+      cashbackRate,
+      source: 'gift_send_card',
+      metadata: {
+        type: 'gift_send',
+        payment: 'card',
+        giftType: 'selection_up',
+        partnerId: input.partnerId ?? null,
+        beneficiaryEmail: email,
+      },
+    });
+
+    const giftCard = await ensureGiftCardForSelectionUp(tx, {
+      amount,
+      partnerId: input.partnerId ?? null,
+      partnerName: input.partnerName ?? null,
+    });
+
+    const purchaseRecord = await tx.giftCardPurchase.create({
+      data: {
+        giftCardId: giftCard.id,
+        purchaserId: senderId,
+        beneficiaryEmail: email,
+        message: input.message ?? null,
+        amount,
+        code: `KUP-${randomAlphanumeric(10).toUpperCase()}`,
+        expiresAt: addMonths(new Date(), 6),
+      },
+    });
+
+    await tx.predefinedGiftSend.create({
+      data: {
+        offerId: input.partnerId ?? '',
+        offerType: 'selection_up',
+        senderId,
+        beneficiaryUserId: beneficiary?.id ?? null,
+        beneficiaryEmail: email,
+        message: input.message ?? null,
+        amount,
+        offerTitle,
+      },
+    });
+
+    return purchaseRecord;
   });
 
   if (beneficiary) {
@@ -561,8 +1028,12 @@ export const sendSelectionUpWithCard = async (senderId: string, input: SendSelec
       title: 'Vous avez reçu une Carte Sélection UP',
       body: input.message?.trim() ? `${offerTitle} — ${input.message.trim()}` : `${offerTitle} (${amount} €)`,
       category: 'gifts',
-      metadata: { amount, senderId, partnerId: input.partnerId },
+      metadata: { amount, senderId, partnerId: input.partnerId, purchaseId: purchase.id },
     });
+    sendPushToUser(beneficiary.id, {
+      title: 'Vous avez reçu une Carte Sélection UP',
+      body: input.message?.trim() ? `${offerTitle} — ${input.message.trim()}` : `${offerTitle} (${amount} €)`,
+    }).catch(() => {});
   }
 
   return {
@@ -570,6 +1041,7 @@ export const sendSelectionUpWithCard = async (senderId: string, input: SendSelec
     message: beneficiary
       ? 'Carte envoyée. Le destinataire a été notifié dans l\'app.'
       : 'Carte envoyée. Le destinataire recevra les détails par e-mail.',
+    purchaseId: purchase.id,
   };
 };
 
@@ -1206,5 +1678,125 @@ export const deleteCarteUpPredefinie = async (id: string) => {
   if (!existing) throw new AppError('Carte UP introuvable', 404);
   await prisma.carteUpPredefinie.delete({ where: { id } });
 };
+
+/** Données publiques pour la page détail d'un cadeau (box / cartes, comment ça marche, partenaires). */
+export type GiftOrderPublicPageData = {
+  title: string;
+  description: string;
+  amount: number;
+  message: string | null;
+  senderLabel: string;
+  videoLink: string | null;
+  howItWorks: string | null;
+  partners: Array<{
+    name: string;
+    websiteUrl: string | null;
+    address: string | null;
+    openingHours: string | null;
+    offerTitle?: string;
+    offerDescription?: string | null;
+  }>;
+  imageUrl: string | null;
+  offerType: string | null;
+};
+
+export async function getGiftOrderPublicPageData(
+  purchaseId: string,
+  giftCardsBaseUrl: string
+): Promise<GiftOrderPublicPageData | null> {
+  const purchase = await prisma.giftCardPurchase.findUnique({
+    where: { id: purchaseId },
+    include: {
+      giftCard: true,
+      purchaser: { select: { firstName: true, lastName: true, email: true } },
+    },
+  });
+  if (!purchase) return null;
+
+  const senderLabel =
+    [purchase.purchaser.firstName, purchase.purchaser.lastName].filter(Boolean).join(' ').trim() ||
+    purchase.purchaser.email ||
+    '';
+
+  const base = giftCardsBaseUrl.replace(/\/+$/, '');
+  const videoLink = purchase.videoStatus === 'ready' ? `${base}/orders/${purchaseId}/video` : null;
+
+  let howItWorks: string | null = null;
+  let imageUrl: string | null = null;
+  const partners: GiftOrderPublicPageData['partners'] = [];
+
+  const offerType = purchase.offerType ?? purchase.giftCard.type ?? null;
+  const offerId = purchase.offerId ?? null;
+
+  if (offerType === 'box_up' && offerId) {
+    const box = await prisma.giftBox.findUnique({
+      where: { id: offerId },
+      include: {
+        items: {
+          include: {
+            partner: {
+              select: { name: true, websiteUrl: true, address: true, openingHours: true },
+            },
+          },
+        },
+      },
+    });
+    if (box) {
+      howItWorks = box.cashbackInfo ?? box.description ?? null;
+      imageUrl = box.imageUrl;
+      for (const item of box.items) {
+        if (item.partner) {
+          partners.push({
+            name: item.partner.name,
+            websiteUrl: item.partner.websiteUrl ?? null,
+            address: item.partner.address ?? null,
+            openingHours: item.partner.openingHours ?? null,
+            offerTitle: item.title,
+            offerDescription: item.description ?? null,
+          });
+        }
+      }
+    }
+  } else if (offerType === 'selection_up' && offerId) {
+    const partner = await prisma.partner.findUnique({
+      where: { id: offerId },
+      select: { name: true, websiteUrl: true, address: true, openingHours: true },
+    });
+    if (partner) {
+      partners.push({
+        name: partner.name,
+        websiteUrl: partner.websiteUrl ?? null,
+        address: partner.address ?? null,
+        openingHours: partner.openingHours ?? null,
+      });
+    }
+  } else if ((offerType === 'carte_up' || offerType === 'predefined' || !offerType) && purchase.giftCard.partnerId) {
+    const partner = await prisma.partner.findUnique({
+      where: { id: purchase.giftCard.partnerId },
+      select: { name: true, websiteUrl: true, address: true, openingHours: true },
+    });
+    if (partner) {
+      partners.push({
+        name: partner.name,
+        websiteUrl: partner.websiteUrl ?? null,
+        address: partner.address ?? null,
+        openingHours: partner.openingHours ?? null,
+      });
+    }
+  }
+
+  return {
+    title: purchase.giftCard.name,
+    description: purchase.giftCard.description ?? '',
+    amount: purchase.amount,
+    message: purchase.message,
+    senderLabel,
+    videoLink,
+    howItWorks,
+    partners,
+    imageUrl,
+    offerType,
+  };
+}
 
 

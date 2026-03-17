@@ -1,4 +1,6 @@
 import { Linking } from 'react-native';
+import { getApiBaseUrl } from '../src/config/api';
+import { getAuthToken } from '../src/services/api';
 
 const POWENS_API_BASE = 'https://api.powens.com/v2';
 
@@ -31,6 +33,35 @@ export type PowensTransaction = {
 };
 
 const getApiKey = () => process.env.EXPO_PUBLIC_POWENS_API_KEY;
+
+/**
+ * Récupère l'URL Webview Powens depuis l'API KashUP (flow temporary code + state).
+ * À utiliser en priorité pour que le callback et la connexion soient liés au compte utilisateur.
+ */
+export async function getKashupPowensWebviewUrl(): Promise<string> {
+  const baseUrl = getApiBaseUrl();
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error('Vous devez être connecté pour lier une banque.');
+  }
+  const response = await fetch(`${baseUrl}/integrations/powens/webview-url`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Impossible de récupérer le lien Powens');
+  }
+  const json = await response.json();
+  const url = json?.data?.webviewUrl;
+  if (!url || typeof url !== 'string') {
+    throw new Error('Lien Powens indisponible');
+  }
+  return url;
+}
 
 export async function createPowensSession(token: string) {
   const apiKey = getApiKey();

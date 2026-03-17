@@ -3,6 +3,7 @@ import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
 import env from '../../config/env';
 import { decrypt, encrypt } from '../../utils/encryption';
+import { processCashbackForConnection } from './powensCashback.service';
 
 /**
  * Service de synchronisation Powens (comptes + transactions)
@@ -280,6 +281,13 @@ export const syncAll = async (connectionId: string): Promise<{
     { connectionId, accountsSynced, transactionsSynced },
     'Synchronisation Powens terminée'
   );
+
+  // Après synchronisation, lancer la reconnaissance cashback (hors transaction DB précédente)
+  try {
+    await processCashbackForConnection(connectionId);
+  } catch (error) {
+    logger.error({ connectionId, error: error instanceof Error ? error.message : String(error) }, 'Erreur traitement cashback Powens');
+  }
 
   return { accountsSynced, transactionsSynced };
 };

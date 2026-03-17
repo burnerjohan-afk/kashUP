@@ -306,6 +306,9 @@ export default function HomeScreen() {
     return points.toLocaleString('fr-FR');
   };
 
+  const walletAmount = walletData?.wallet?.soldeCashback ?? 0;
+  const walletPoints = walletData?.wallet?.soldePoints ?? 0;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <LinearGradient
@@ -372,18 +375,14 @@ export default function HomeScreen() {
               <View style={styles.userSummaryTextBlock}>
                 <Text style={[styles.userSummaryLabel, styles.userSummaryLabelNowrap]} numberOfLines={1}>Carte{"\u00A0"}UP</Text>
               <Text style={styles.userSummaryAmount}>
-                {walletData.wallet?.soldeCashback != null
-                  ? formatCashback(walletData.wallet.soldeCashback)
-                  : '0,00 €'}
+                {formatCashback(walletAmount)}
               </Text>
               <Text style={styles.userSummarySubtitle}>C'est le montant disponible grâce à vos achats locaux.</Text>
               <View style={styles.userSummaryPointsRow}>
                 <View style={styles.userSummaryPointsDot} />
                 <Text style={styles.userSummaryPointsLabel}>Points KashUP</Text>
                 <Text style={styles.userSummaryPointsValue}>
-                  {walletData.wallet?.soldePoints != null
-                    ? formatPoints(walletData.wallet.soldePoints)
-                    : '0'}
+                  {formatPoints(walletPoints)}
                 </Text>
               </View>
             </View>
@@ -494,18 +493,24 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Bloc Jackpot — compact, dégradé doré, texte vert */}
+        {/* Bloc Jackpot — compact, dégradé doré, texte vert + badge JACKPOT en haut à gauche */}
         {jackpot && (
-          <TouchableOpacity
-            style={styles.jackpotBlock}
-            onPress={handleJackpotPress}
-            activeOpacity={0.92}>
-            <LinearGradient
-              colors={['#ffd700', '#ffd700', '#ffd700', '#e6c200']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.jackpotCard}>
-              <View style={styles.jackpotRow}>
+          <View style={styles.jackpotBlockWrapper}>
+            <Image
+              source={require('../assets/images/jackpot-badge.png')}
+              style={styles.jackpotBadgeImage}
+              resizeMode="contain"
+            />
+            <TouchableOpacity
+              style={styles.jackpotBlock}
+              onPress={handleJackpotPress}
+              activeOpacity={0.92}>
+              <LinearGradient
+                colors={['#ffd700', '#ffd700', '#ffd700', '#e6c200']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.jackpotCard}>
+                <View style={styles.jackpotRow}>
                 <View style={styles.jackpotLeft}>
                   <View style={styles.jackpotTitleRow}>
                     <Ionicons name="trophy" size={18} color={colors.black} />
@@ -542,6 +547,7 @@ export default function HomeScreen() {
               </View>
             </LinearGradient>
           </TouchableOpacity>
+          </View>
         )}
 
         {/* Loteries KashUP — triées de la date de tirage la plus proche à la plus éloignée */}
@@ -1992,10 +1998,29 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   // Bloc Jackpot — compact, tape à l'œil, dégradé doré
-  jackpotBlock: {
+  jackpotBlockWrapper: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  jackpotBlock: {
+    overflow: 'visible',
+  },
+  jackpotBadgeImage: {
+    position: 'absolute',
+    left: -12,
+    top: -28,
+    width: 120,
+    height: 72,
+    zIndex: 2,
+    transform: [{ rotate: '-14deg' }],
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 8,
   },
   jackpotCard: {
     borderRadius: radius.lg,
